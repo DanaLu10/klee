@@ -255,6 +255,12 @@ public:
   using base_mo_t = std::map<uint64_t, std::set<ref<Expr>>>;
   base_mo_t base_mos;
 
+  /// @brief Read set of path.
+  std::set<std::string> readSet;
+
+  /// @brief Write set of path.
+  std::set<std::string> writeSet;
+
 public:
 #ifdef KLEE_UNITTEST
   // provide this function only in the context of unittests

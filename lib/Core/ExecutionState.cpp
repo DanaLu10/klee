@@ -117,7 +117,9 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     coveredNew(state.coveredNew),
     forkDisabled(state.forkDisabled),
     base_addrs(state.base_addrs),
-    base_mos(state.base_mos) {
+    base_mos(state.base_mos),
+    readSet(state.readSet),
+    writeSet(state.writeSet) {
   for (const auto &cur_mergehandler: openMergeStack)
     cur_mergehandler->addOpenState(this);
 }

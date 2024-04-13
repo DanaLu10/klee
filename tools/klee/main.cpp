@@ -286,6 +286,24 @@ namespace {
            cl::desc("Link the llvm libc++ library into the bitcode (default=false)"),
            cl::init(false),
            cl::cat(LinkCat));
+  
+
+  /*** Functional Verification Options ***/
+  
+  cl::OptionCategory FunctionalVerificationCat("Functional Verification Options",
+                                               "These options are used for functional verification of eBPF programs.");
+
+  cl::opt<bool>
+  ReadSet("read-set",
+          cl::init(false),
+          cl::desc("Generate the read set of the program"),
+          cl::cat(FunctionalVerificationCat));
+  
+  WriteSet("write-set",
+          cl::init(false),
+          cl::desc("Generate the write set of the program"),
+          cl::cat(FunctionalVerificationCat));
+
 }
 
 namespace klee {

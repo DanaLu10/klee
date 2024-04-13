@@ -3765,6 +3765,8 @@ void Executor::terminateState(ExecutionState &state,
   }
 
   interpreterHandler->incPathsExplored();
+  interpreterHandler->addToReadSet(state->readSet);
+  interpreterHandler->addToWriteSet(state->writeSet);
   executionTree->setTerminationType(state, reason);
 
   std::vector<ExecutionState *>::iterator it =
