@@ -299,6 +299,7 @@ namespace {
           cl::desc("Generate the read set of the program"),
           cl::cat(FunctionalVerificationCat));
   
+  cl::opt<bool>
   WriteSet("write-set",
           cl::init(false),
           cl::desc("Generate the write set of the program"),
@@ -325,6 +326,8 @@ private:
   unsigned m_numGeneratedTests; // Number of tests successfully generated
   unsigned m_pathsCompleted; // number of completed paths
   unsigned m_pathsExplored; // number of partially explored and completed paths
+  std::set<std::string> m_readSet; // write set
+  std::set<std::string> m_writeSet; // read set
 
   // used for writing .ktest files
   int m_argc;
@@ -339,9 +342,15 @@ public:
   unsigned getNumTestCases() { return m_numGeneratedTests; }
   unsigned getNumPathsCompleted() { return m_pathsCompleted; }
   unsigned getNumPathsExplored() { return m_pathsExplored; }
+  std::set<std::string> getReadSet() { return m_readSet; }
+  std::set<std::string> getWriteSet() { return m_writeSet; }
   void incPathsCompleted() { ++m_pathsCompleted; }
   void incPathsExplored(std::uint32_t num = 1) {
     m_pathsExplored += num; }
+  void addToReadSet(std::set<std::string> newSet) {
+    m_readSet.merge(newSet); }
+  void addToWriteSet(std::set<std::string> newSet) {
+    m_writeSet.merge(newSet); }
 
   void setInterpreter(Interpreter *i);
 
@@ -1600,6 +1609,24 @@ int main(int argc, char **argv, char **envp) {
     << "KLEE: done: valid queries = " << queriesValid << "\n"
     << "KLEE: done: invalid queries = " << queriesInvalid << "\n"
     << "KLEE: done: query cex = " << queryCounterexamples << "\n";
+  
+  if (ReadSet) {
+    handler->getInfoStream() << "KLEE: done: read set = {";
+    std::set<std::string> readSet = handler->getReadSet();
+    for (auto const& read : readSet) {
+      handler->getInfoStream() << read << ", ";
+    }
+    handler->getInfoStream() << "}\n";
+  }
+
+  if (WriteSet) {
+    handler->getInfoStream() << "KLEE: done: write set = {";
+    std::set<std::string> writeSet = handler->getWriteSet();
+    for (auto const& write : writeSet) {
+      handler->getInfoStream() << write << ", ";
+    }
+    handler->getInfoStream() << "}\n";
+  }
 
   std::stringstream stats;
   stats << '\n'

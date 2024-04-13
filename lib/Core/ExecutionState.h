@@ -279,6 +279,9 @@ public:
 
   ExecutionState *branch();
 
+  void addRead(std::string newRead);
+  void addWrite(std::string newWrite);
+
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
 

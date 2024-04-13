@@ -135,6 +135,14 @@ ExecutionState *ExecutionState::branch() {
   return falseState;
 }
 
+void ExecutionState::addRead(std::string newRead) {
+  readSet.insert(newRead);
+}
+
+void ExecutionState::addWrite(std::string newWrite) {
+  writeSet.insert(newWrite);
+}
+
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
   stack.emplace_back(StackFrame(caller, kf));
 }
