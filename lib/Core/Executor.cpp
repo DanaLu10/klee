@@ -4493,7 +4493,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       if (inBounds) {
         const ObjectState *os = op.second;
         if (isWrite) {
-          state.addWrite(mo->name);
+          for (auto op = state.pc->inst->op_begin(); op != state.pc->inst->op_end(); op++) {
+            Value *v = op->get();
+            state.addWrite(v->getName().str());
+          }
           if (os->readOnly) {
             terminateStateOnProgramError(state, "memory error: object read only",
                                          StateTerminationType::ReadOnly);
@@ -4502,7 +4505,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             wos->write(offset, value);
           }
         } else {
-          state.addRead(mo->name);
+          for (auto op = state.pc->inst->op_begin(); op != state.pc->inst->op_end(); op++) {
+            Value *v = op->get();
+            state.addRead(v->getName().str());
+          }
           ref<Expr> result = os->read(offset, type);
 
           if (interpreterOpts.MakeConcreteSymbolic)
@@ -4545,7 +4551,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     // bound can be 0 on failure or overlapped 
     if (bound) {
       if (isWrite) {
-          state.addWrite(mo->name);
+        for (auto op = state.pc->inst->op_begin(); op != state.pc->inst->op_end(); op++) {
+          Value *v = op->get();
+          state.addWrite(v->getName().str());
+        }
         if (os->readOnly) {
           terminateStateOnProgramError(*bound, "memory error: object read only",
                                        StateTerminationType::ReadOnly);
@@ -4554,7 +4563,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           wos->write(mo->getOffsetExpr(address), value);
         }
       } else {
-          state.addRead(mo->name);
+        for (auto op = state.pc->inst->op_begin(); op != state.pc->inst->op_end(); op++) {
+          Value *v = op->get();
+          state.addRead(v->getName().str());
+        }
         ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
         bindLocal(target, *bound, result);
       }
