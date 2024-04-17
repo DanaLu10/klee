@@ -33,3 +33,6 @@ autom4te.cache/
 
 # VSCode 
 .vscode/
+
+# Doxygen
+@DOXYGEN_OUTPUT_DIR@/

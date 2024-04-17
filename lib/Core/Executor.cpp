@@ -4416,6 +4416,35 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
+  if (isWrite) {
+    // add to write set
+    Instruction *i = state.prevPC->inst;
+    int x = 0;
+    for (auto op = i->op_begin(); op != i->op_end(); op++) {
+      Value *v = op->get();
+      if (v->getName().str() == "myVariable") {
+        llvm::errs() << "Number for myVariable: " << x << "\n";
+        i->print(llvm::errs());
+        llvm::errs() << ".\n";
+      }
+      x++;
+    }
+
+    if (i->getNumOperands() > 1 && i->getOpcode() == 33) {
+      state.addWrite(state.prevPC->inst->getOperand(1)->getName().str());
+      if (state.prevPC->inst->getOperand(0)->getName().str() == "myVariable") {
+        llvm::errs() << "Opcode for myVariable operation: " << state.prevPC->inst->getOpcode() << "\n";
+        state.prevPC->inst->print(llvm::errs());
+        llvm::errs() << "\n";
+      }
+    }
+  } else {
+    // add to read set
+    if (state.prevPC->inst->getNumOperands() > 0) {
+      state.addRead(state.prevPC->inst->getOperand(0)->getName().str());
+    }
+  }
+
   Expr::Width type = (isWrite ? value->getWidth() : 
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
@@ -4493,10 +4522,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       if (inBounds) {
         const ObjectState *os = op.second;
         if (isWrite) {
-          for (auto op = state.pc->inst->op_begin(); op != state.pc->inst->op_end(); op++) {
-            Value *v = op->get();
-            state.addWrite(v->getName().str());
-          }
           if (os->readOnly) {
             terminateStateOnProgramError(state, "memory error: object read only",
                                          StateTerminationType::ReadOnly);
@@ -4505,10 +4530,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             wos->write(offset, value);
           }
         } else {
-          for (auto op = state.pc->inst->op_begin(); op != state.pc->inst->op_end(); op++) {
-            Value *v = op->get();
-            state.addRead(v->getName().str());
-          }
           ref<Expr> result = os->read(offset, type);
 
           if (interpreterOpts.MakeConcreteSymbolic)
@@ -4551,10 +4572,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     // bound can be 0 on failure or overlapped 
     if (bound) {
       if (isWrite) {
-        for (auto op = state.pc->inst->op_begin(); op != state.pc->inst->op_end(); op++) {
-          Value *v = op->get();
-          state.addWrite(v->getName().str());
-        }
         if (os->readOnly) {
           terminateStateOnProgramError(*bound, "memory error: object read only",
                                        StateTerminationType::ReadOnly);
@@ -4563,10 +4580,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
           wos->write(mo->getOffsetExpr(address), value);
         }
       } else {
-        for (auto op = state.pc->inst->op_begin(); op != state.pc->inst->op_end(); op++) {
-          Value *v = op->get();
-          state.addRead(v->getName().str());
-        }
         ref<Expr> result = os->read(mo->getOffsetExpr(address), type);
         bindLocal(target, *bound, result);
       }
