@@ -4419,23 +4419,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   if (isWrite) {
     // add to write set
     Instruction *i = state.prevPC->inst;
-    int x = 0;
-    for (auto op = i->op_begin(); op != i->op_end(); op++) {
-      Value *v = op->get();
-      if (v->getName().str() == "myVariable") {
-        llvm::errs() << "Number for myVariable: " << x << "\n";
-        i->print(llvm::errs());
-        llvm::errs() << ".\n";
-      }
-      x++;
-    }
-
-    if (i->getNumOperands() > 1 && i->getOpcode() == 33) {
-      state.addWrite(state.prevPC->inst->getOperand(1)->getName().str());
-      if (state.prevPC->inst->getOperand(0)->getName().str() == "myVariable") {
-        llvm::errs() << "Opcode for myVariable operation: " << state.prevPC->inst->getOpcode() << "\n";
-        state.prevPC->inst->print(llvm::errs());
-        llvm::errs() << "\n";
+    if (i->getNumOperands() > 1 && i->getOpcode() == 33 && i->getOperand(1)->getName().str() != "") {
+      state.addWrite(i->getOperand(1)->getName().str());
+      if (i->getOperand(0)->getName().str() != "") {
+        state.addRead(i->getOperand(0)->getName().str());
       }
     }
   } else {

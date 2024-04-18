@@ -319,6 +319,7 @@ private:
   Interpreter *m_interpreter;
   TreeStreamWriter *m_pathWriter, *m_symPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
+  std::unique_ptr<llvm::raw_ostream> m_verificationFile;
 
   SmallString<128> m_outputDirectory;
 
@@ -338,6 +339,7 @@ public:
   ~KleeHandler();
 
   llvm::raw_ostream &getInfoStream() const { return *m_infoFile; }
+  llvm::raw_ostream &getVerificationStream() const { return *m_verificationFile; }
   /// Returns the number of test cases successfully generated so far
   unsigned getNumTestCases() { return m_numGeneratedTests; }
   unsigned getNumPathsCompleted() { return m_pathsCompleted; }
@@ -447,6 +449,9 @@ KleeHandler::KleeHandler(int argc, char **argv)
 
   // open info
   m_infoFile = openOutputFile("info");
+
+  // opern verification file
+  m_verificationFile = openOutputFile("verification");
 }
 
 KleeHandler::~KleeHandler() {
@@ -1611,21 +1616,21 @@ int main(int argc, char **argv, char **envp) {
     << "KLEE: done: query cex = " << queryCounterexamples << "\n";
   
   if (ReadSet) {
-    handler->getInfoStream() << "KLEE: done: read set = {";
+    handler->getVerificationStream() << "KLEE: done: read set = {";
     std::set<std::string> readSet = handler->getReadSet();
     for (auto const& read : readSet) {
-      handler->getInfoStream() << read << ", ";
+      handler->getVerificationStream() << read << ", ";
     }
-    handler->getInfoStream() << "}\n";
+    handler->getVerificationStream() << "}\n";
   }
 
   if (WriteSet) {
-    handler->getInfoStream() << "KLEE: done: write set = {";
+    handler->getVerificationStream() << "KLEE: done: write set = {";
     std::set<std::string> writeSet = handler->getWriteSet();
     for (auto const& write : writeSet) {
-      handler->getInfoStream() << write << ", ";
+      handler->getVerificationStream() << write << ", ";
     }
-    handler->getInfoStream() << "}\n";
+    handler->getVerificationStream() << "}\n";
   }
 
   std::stringstream stats;
