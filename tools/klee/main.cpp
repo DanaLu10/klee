@@ -1618,8 +1618,13 @@ int main(int argc, char **argv, char **envp) {
   if (ReadSet) {
     handler->getVerificationStream() << "KLEE: done: read set = {";
     std::set<std::string> readSet = handler->getReadSet();
+    bool first = true;
     for (auto const& read : readSet) {
-      handler->getVerificationStream() << read << ", ";
+      if (!first)
+        handler->getVerificationStream() << ", ";
+      else
+        first = false;
+      handler->getVerificationStream() << read;
     }
     handler->getVerificationStream() << "}\n";
   }
@@ -1627,8 +1632,13 @@ int main(int argc, char **argv, char **envp) {
   if (WriteSet) {
     handler->getVerificationStream() << "KLEE: done: write set = {";
     std::set<std::string> writeSet = handler->getWriteSet();
+    bool first = true;
     for (auto const& write : writeSet) {
-      handler->getVerificationStream() << write << ", ";
+      if (!first)
+        handler->getVerificationStream() << ", ";
+      else 
+        first = false;
+      handler->getVerificationStream() << write;
     }
     handler->getVerificationStream() << "}\n";
   }
