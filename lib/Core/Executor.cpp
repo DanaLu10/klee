@@ -4416,19 +4416,41 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
+  std::vector<std::string> removedNames{"", "retval", "argc.addr", "argv.addr"};
+  std::vector<std::string> removedFunctions{"__uClibc_main", "__uClibc_init", "__uClibc_fini", "exit"};
+  Instruction *i = state.prevPC->inst;
   if (isWrite) {
     // add to write set
-    Instruction *i = state.prevPC->inst;
-    if (i->getNumOperands() > 1 && i->getOpcode() == 33 && i->getOperand(1)->getName().str() != "") {
+    if (i->getNumOperands() > 1 
+        && i->getOpcode() == 33 
+        && std::find(removedNames.begin(), removedNames.end(), i->getOperand(1)->getName().str()) == removedNames.end()
+        && std::find(removedFunctions.begin(), removedFunctions.end(), i->getFunction()->getName().str()) == removedFunctions.end()) {
       state.addWrite(i->getOperand(1)->getName().str());
       if (i->getOperand(0)->getName().str() != "") {
         state.addRead(i->getOperand(0)->getName().str());
       }
+      // if (i->getOperand(1)->getName().str() == "__environ" || i->getOperand(1)->getName().str() == "myVariable" || i->getOperand(1)->getName().str() ==  "__uClibc_init.been_there_done_that" || i->getOperand(1)->getName().str() == "__pagesize") {
+      if (i->getDebugLoc()) {
+        i->print(llvm::errs());
+        llvm::errs() << "\nInstruction has info"; //<<  i->getDebugLoc()->getLine() << ", and column " << i->getDebugLoc()->getColumn() << "\n";
+        i->getDebugLoc()->print(llvm::errs());
+        llvm::errs() << "This instruction is in function " << i->getFunction()->getName().str() << "\n"; 
+        llvm::errs() << "***************\n";
+      } else {
+        llvm::errs() << "This instruction has no debug info:";
+        i->print(llvm::errs());
+        llvm::errs() << "\n";
+      }
+      // }
+      
     }
   } else {
     // add to read set
-    if (state.prevPC->inst->getNumOperands() > 0) {
-      state.addRead(state.prevPC->inst->getOperand(0)->getName().str());
+    if (i->getNumOperands() > 0
+        && i->getOpcode() == 32
+        && std::find(removedNames.begin(), removedNames.end(), i->getOperand(0)->getName().str()) == removedNames.end()
+        && std::find(removedFunctions.begin(), removedFunctions.end(), i->getFunction()->getName().str()) == removedFunctions.end()) {
+      state.addRead(i->getOperand(0)->getName().str());
     }
   }
 
