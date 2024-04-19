@@ -79,6 +79,8 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 
 #include <algorithm>
 #include <cassert>
