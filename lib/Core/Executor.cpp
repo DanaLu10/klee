@@ -1710,6 +1710,50 @@ ref<klee::ConstantExpr> Executor::getEhTypeidFor(ref<Expr> type_info) {
 
 void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
                            std::vector<ref<Expr>> &arguments) {
+  std::string fName = f->getName().str();
+  if (fName == "bpf_map_lookup_elem") {
+    llvm::errs() << "**** processing special function bpf_map_lookup_elem";
+    std::string keyName = "unk_key";
+    std::string mapName = "unk_map";
+    Instruction *i = ki->inst;
+    if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
+      mapName = bitcastMap->getOperand(0)->getName().str();
+      llvm::errs() << "Name of map is " << (bitcastMap->getOperand(0)->getName().str()) << "\n";
+      // if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
+        // std::string keyName = bitcastKey->getOperand(0)->getName().str();
+      //   Value *v = bitcastKey->getOperand(0);
+      //   llvm::errs() << "V: ";
+      //   v->dump();
+      // }
+    } else {
+      // DANATODO: figure out what to do if it is not a bitcast
+      assert(0 && "No implementation for if no bitcast");
+    }
+
+    ref<Expr> lookupKey = arguments[1];
+    if (ConstantExpr *ce = cast<ConstantExpr>(lookupKey)) {
+      // for bpf_map_lookup_elem, the lookup key is a pointer to a value
+      // so we need to get the value stored in the pointer
+      ObjectPair op;
+      state.addressSpace.resolveOne(ce, op);
+      const MemoryObject *mo = op.first;
+      const ObjectState *osarg = op.second;
+      assert(osarg && "Error: Resolving not able to find object not handled");
+
+      // read the pointer
+      ref<Expr> offsetToArg = mo->getOffsetExpr(ce);
+      Expr::Width type = ce->getWidth();
+      ref<Expr> readValue = osarg->read(offsetToArg, /*DANATODO: this is not just int32*/ Expr::Int32);
+
+      if (ConstantExpr *valueCE = cast<ConstantExpr>(readValue)) {
+        std::string valueStr;
+        valueCE->toString(valueStr, 10);
+        llvm::errs() << "\nSuccessfully cast read value to constant expression, value is " << valueStr << "\n"; 
+        keyName = valueStr;
+      }
+    }
+    state.addRead(mapName + "." + keyName);
+  }
   Instruction *i = ki->inst;
   if (isa_and_nonnull<DbgInfoIntrinsic>(i))
     return;
@@ -4419,7 +4463,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
   std::vector<std::string> removedNames{"", "retval", "argc.addr", "argv.addr"};
-  std::vector<std::string> removedFunctions{"__uClibc_main", "__uClibc_init", "__uClibc_fini", "exit"};
+  std::vector<std::string> removedFunctions{"__uClibc_main", "__uClibc_init", "__uClibc_fini", 
+    "exit", "map_allocate", "map_lookup_elem", "map_update_elem", "map_delete_elem", 
+    "map_of_map_allocate", "map_of_map_lookup_elem", "bpf_map_init_stub"  ,
+    "bpf_map_lookup_elem", "bpf_map_reset_stub", ""};
   Instruction *i = state.prevPC->inst;
   if (isWrite) {
     // add to write set
@@ -4432,17 +4479,18 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         state.addRead(i->getOperand(0)->getName().str());
       }
       // if (i->getOperand(1)->getName().str() == "__environ" || i->getOperand(1)->getName().str() == "myVariable" || i->getOperand(1)->getName().str() ==  "__uClibc_init.been_there_done_that" || i->getOperand(1)->getName().str() == "__pagesize") {
-      if (i->getDebugLoc()) {
-        i->print(llvm::errs());
-        llvm::errs() << "\nInstruction has info"; //<<  i->getDebugLoc()->getLine() << ", and column " << i->getDebugLoc()->getColumn() << "\n";
-        i->getDebugLoc()->print(llvm::errs());
-        llvm::errs() << "This instruction is in function " << i->getFunction()->getName().str() << "\n"; 
-        llvm::errs() << "***************\n";
-      } else {
-        llvm::errs() << "This instruction has no debug info:";
-        i->print(llvm::errs());
-        llvm::errs() << "\n";
-      }
+      // if (i->getDebugLoc()) {
+      // // if (i->getOperand(1)->getName().str() == "csum.addr.i106") {
+      //   i->print(llvm::errs());
+      //   llvm::errs() << "\nInstruction has info"; //<<  i->getDebugLoc()->getLine() << ", and column " << i->getDebugLoc()->getColumn() << "\n";
+      //   i->getDebugLoc()->print(llvm::errs());
+      //   llvm::errs() << "This instruction is in function " << i->getFunction()->getName().str() << "\n"; 
+      //   llvm::errs() << "***************\n";
+      // } else {
+      //   llvm::errs() << "This instruction has no debug info:";
+      //   i->print(llvm::errs());
+      //   llvm::errs() << "\n";
+      // }
       // }
       
     }
