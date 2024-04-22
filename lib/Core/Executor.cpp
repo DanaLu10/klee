@@ -1727,11 +1727,32 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       // }
     } else {
       // DANATODO: figure out what to do if it is not a bitcast
-      assert(0 && "No implementation for if no bitcast");
+      assert(0 && "Error: No implementation for if no bitcast");
     }
 
+    ref<Expr> mapObj = arguments[0];
     ref<Expr> lookupKey = arguments[1];
-    if (ConstantExpr *ce = cast<ConstantExpr>(lookupKey)) {
+    unsigned size = 32;
+    if (ConstantExpr *ce = dyn_cast<ConstantExpr>(mapObj)) {
+      // Find size of argument
+      ObjectPair op;
+      state.addressSpace.resolveOne(ce, op);
+      const MemoryObject *mapMo = op.first;
+      const ObjectState *mapOs = op.second;
+      assert(mapOs && "Error: Resolving not able to find object not handled");
+      mapOs->print();
+      ref<Expr> keySizeExpr = mapOs->read(4, Expr::Int32);
+      keySizeExpr->dump();
+      if (ConstantExpr *keySizeCE = cast<ConstantExpr>(keySizeExpr)) {
+        uint64_t keySize = keySizeCE->getZExtValue(32);
+        llvm::errs() << "Got key size " << keySize << "\n";
+        // keySize is in bytes, need to convert to bits
+        size = keySize * 8;
+      }
+    }
+    llvm::errs() << "Final size " << size << "\n";
+    
+    if (ConstantExpr *ce = dyn_cast<ConstantExpr>(lookupKey)) {
       // for bpf_map_lookup_elem, the lookup key is a pointer to a value
       // so we need to get the value stored in the pointer
       ObjectPair op;
@@ -1743,14 +1764,20 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       // read the pointer
       ref<Expr> offsetToArg = mo->getOffsetExpr(ce);
       Expr::Width type = ce->getWidth();
-      ref<Expr> readValue = osarg->read(offsetToArg, /*DANATODO: this is not just int32*/ Expr::Int32);
+      // DANATODO calculation of size may not be correct, look into the bitcast operation of the argument
+      // before the call
+      ref<Expr> readValue = osarg->read(offsetToArg, size);
 
-      if (ConstantExpr *valueCE = cast<ConstantExpr>(readValue)) {
+      if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(readValue)) {
         std::string valueStr;
         valueCE->toString(valueStr, 10);
         llvm::errs() << "\nSuccessfully cast read value to constant expression, value is " << valueStr << "\n"; 
         keyName = valueStr;
+      } else {
+        assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
       }
+    } else {
+      assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
     }
     state.addRead(mapName + "." + keyName);
   }
