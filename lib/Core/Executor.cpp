@@ -1715,42 +1715,31 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     llvm::errs() << "**** processing special function bpf_map_lookup_elem";
     std::string keyName = "unk_key";
     std::string mapName = "unk_map";
+    unsigned keySize = 32;
     Instruction *i = ki->inst;
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
       mapName = bitcastMap->getOperand(0)->getName().str();
       llvm::errs() << "Name of map is " << (bitcastMap->getOperand(0)->getName().str()) << "\n";
-      // if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
-        // std::string keyName = bitcastKey->getOperand(0)->getName().str();
-      //   Value *v = bitcastKey->getOperand(0);
-      //   llvm::errs() << "V: ";
-      //   v->dump();
-      // }
+
+      // Obtain original size of key before bitcast into void pointer
+      if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
+        if (bitcastKey->getSrcTy()->getPointerElementType()->isIntegerTy()) {
+          auto const *intType = cast<llvm::IntegerType>(bitcastKey->getSrcTy()->getPointerElementType());
+          llvm::errs() << "Size of the int type in bits " << intType->getBitWidth() << "\n";
+          keySize = intType->getBitWidth();
+        } else {
+          assert(0 && "Error: case for not integer type not implemented yet.");
+        }
+      }
     } else {
       // DANATODO: figure out what to do if it is not a bitcast
       assert(0 && "Error: No implementation for if no bitcast");
     }
 
+    llvm::errs() << "Final size " << keySize << "\n";
+
     ref<Expr> mapObj = arguments[0];
     ref<Expr> lookupKey = arguments[1];
-    unsigned size = 32;
-    if (ConstantExpr *ce = dyn_cast<ConstantExpr>(mapObj)) {
-      // Find size of argument
-      ObjectPair op;
-      state.addressSpace.resolveOne(ce, op);
-      const MemoryObject *mapMo = op.first;
-      const ObjectState *mapOs = op.second;
-      assert(mapOs && "Error: Resolving not able to find object not handled");
-      mapOs->print();
-      ref<Expr> keySizeExpr = mapOs->read(4, Expr::Int32);
-      keySizeExpr->dump();
-      if (ConstantExpr *keySizeCE = cast<ConstantExpr>(keySizeExpr)) {
-        uint64_t keySize = keySizeCE->getZExtValue(32);
-        llvm::errs() << "Got key size " << keySize << "\n";
-        // keySize is in bytes, need to convert to bits
-        size = keySize * 8;
-      }
-    }
-    llvm::errs() << "Final size " << size << "\n";
     
     if (ConstantExpr *ce = dyn_cast<ConstantExpr>(lookupKey)) {
       // for bpf_map_lookup_elem, the lookup key is a pointer to a value
@@ -1763,10 +1752,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
 
       // read the pointer
       ref<Expr> offsetToArg = mo->getOffsetExpr(ce);
-      Expr::Width type = ce->getWidth();
-      // DANATODO calculation of size may not be correct, look into the bitcast operation of the argument
-      // before the call
-      ref<Expr> readValue = osarg->read(offsetToArg, size);
+      ref<Expr> readValue = osarg->read(offsetToArg, keySize);
 
       if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(readValue)) {
         std::string valueStr;
@@ -1781,6 +1767,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     }
     state.addRead(mapName + "." + keyName);
   }
+
   Instruction *i = ki->inst;
   if (isa_and_nonnull<DbgInfoIntrinsic>(i))
     return;
