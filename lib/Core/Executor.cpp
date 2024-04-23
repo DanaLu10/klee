@@ -1808,7 +1808,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
     }
     state.addRead(mapName + "." + keyName);
-  }s
+  }
 
   Instruction *i = ki->inst;
   if (isa_and_nonnull<DbgInfoIntrinsic>(i))
