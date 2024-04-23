@@ -1720,15 +1720,16 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
       mapName = bitcastMap->getOperand(0)->getName().str();
       llvm::errs() << "Name of map is " << (bitcastMap->getOperand(0)->getName().str()) << "\n";
-
       // Obtain original size of key before bitcast into void pointer
       if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
-        if (bitcastKey->getSrcTy()->getPointerElementType()->isIntegerTy()) {
-          auto const *intType = cast<llvm::IntegerType>(bitcastKey->getSrcTy()->getPointerElementType());
-          llvm::errs() << "Size of the int type in bits " << intType->getBitWidth() << "\n";
-          keySize = intType->getBitWidth();
+        llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
+        if (t->isSized()) {
+          keySize = getWidthForLLVMType(t);
+        } else if (t->isStructTy()) {
+          llvm::StructType *st = cast<llvm::StructType>(bitcastKey->getSrcTy()->getPointerElementType());
+          keySize = kmodule->targetData->getStructLayout(st)->getSizeInBits();
         } else {
-          assert(0 && "Error: case for not integer type not implemented yet.");
+          assert(0 && "Error: case for argument of this type not implemented yet.");
         }
       }
     } else {
@@ -1759,10 +1760,25 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         valueCE->toString(valueStr, 10);
         llvm::errs() << "\nSuccessfully cast read value to constant expression, value is " << valueStr << "\n"; 
         keyName = valueStr;
+      // } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(readValue)) {
+      //   std::string valueStr;
+      //   ref<Expr> leftChild = valueCE->getLeft();
+      //   osarg->print();
+      //   leftChild->dump();
+      //   if (osarg->isByteKnownSymbolic(offsetToArg)) {
+      //     llvm::errs() << "Symbolic type \n";
+      //   }
       } else {
-        assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
+        llvm::errs() << "Not handled type ";
+        Expr::printKind(llvm::errs(), readValue->getKind());
+        readValue->dump();
+        osarg->print();
+        // assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
       }
     } else {
+      llvm::errs() << "Not handled type ";
+      Expr::printKind(llvm::errs(), lookupKey->getKind());
+      lookupKey->dump();
       assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
     }
     state.addRead(mapName + "." + keyName);
