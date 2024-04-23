@@ -1718,7 +1718,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     unsigned keySize = 32;
     Instruction *i = ki->inst;
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
-      mapName = bitcastMap->getOperand(0)->getName().str();
+      mapName = "map:" + bitcastMap->getOperand(0)->getName().str();
       llvm::errs() << "Name of map is " << (bitcastMap->getOperand(0)->getName().str()) << "\n";
       // Obtain original size of key before bitcast into void pointer
       if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
@@ -1746,7 +1746,9 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       // for bpf_map_lookup_elem, the lookup key is a pointer to a value
       // so we need to get the value stored in the pointer
       ObjectPair op;
-      state.addressSpace.resolveOne(ce, op);
+      // state.addressSpace.resolveOne(ce, op);
+      bool success;
+      state.addressSpace.resolveOne(state, solver.get(), ce, op, success);
       const MemoryObject *mo = op.first;
       const ObjectState *osarg = op.second;
       assert(osarg && "Error: Resolving not able to find object not handled");
@@ -1760,14 +1762,38 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         valueCE->toString(valueStr, 10);
         llvm::errs() << "\nSuccessfully cast read value to constant expression, value is " << valueStr << "\n"; 
         keyName = valueStr;
-      // } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(readValue)) {
-      //   std::string valueStr;
-      //   ref<Expr> leftChild = valueCE->getLeft();
-      //   osarg->print();
-      //   leftChild->dump();
-      //   if (osarg->isByteKnownSymbolic(offsetToArg)) {
-      //     llvm::errs() << "Symbolic type \n";
-      //   }
+      } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(readValue)) {
+        // Parts of this read contains symbolic bytes
+        std::string valueStr;
+        int currByte = 0;
+        ref<Expr> currLeft;
+        ConcatExpr *currRight;
+        currRight = valueCE;
+
+        // Iterate over the concatenations
+        do {
+          currLeft = currRight->getLeft();
+          if (ConstantExpr *leftCE = dyn_cast<ConstantExpr>(currLeft)) {
+            std::string currLeftStr;
+            leftCE->toString(currLeftStr, 10);
+            valueStr += ("b" + std::to_string(currByte) + "_" + currLeftStr + "_");
+          } else {
+            valueStr += ("b" + std::to_string(currByte) + "_sym_");
+          }
+          currByte++;
+          currLeft->dump();
+        } while ((currRight->getRight()->getKind() == Expr::Concat) && (currRight = dyn_cast<ConcatExpr>(currRight->getRight())));
+        // while there is more to read
+
+        if (ConstantExpr *lastCE = dyn_cast<ConstantExpr>(currRight->getRight())) {
+          std::string currLeftStr;
+          lastCE->toString(currLeftStr, 10);
+          valueStr += ("b" + std::to_string(currByte) + "_" + currLeftStr + "_");
+        } else {
+          valueStr += ("b" + std::to_string(currByte) + "_sym_");
+        }
+        keyName = valueStr;
+        llvm::errs() << "Final key name " << keyName << "\n";
       } else {
         llvm::errs() << "Not handled type ";
         Expr::printKind(llvm::errs(), readValue->getKind());
@@ -1782,7 +1808,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
     }
     state.addRead(mapName + "." + keyName);
-  }
+  }s
 
   Instruction *i = ki->inst;
   if (isa_and_nonnull<DbgInfoIntrinsic>(i))
