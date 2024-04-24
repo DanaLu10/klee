@@ -1711,7 +1711,7 @@ ref<klee::ConstantExpr> Executor::getEhTypeidFor(ref<Expr> type_info) {
 void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
                            std::vector<ref<Expr>> &arguments) {
   std::string fName = f->getName().str();
-  if (fName == "bpf_map_lookup_elem") {
+  if (fName == "bpf_map_lookup_elem" || fName == "bpf_map_update_elem") {
     llvm::errs() << "**** processing special function bpf_map_lookup_elem";
     std::string keyName = "unk_key";
     std::string mapName = "unk_map";
@@ -1746,7 +1746,6 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       // for bpf_map_lookup_elem, the lookup key is a pointer to a value
       // so we need to get the value stored in the pointer
       ObjectPair op;
-      // state.addressSpace.resolveOne(ce, op);
       bool success;
       state.addressSpace.resolveOne(state, solver.get(), ce, op, success);
       const MemoryObject *mo = op.first;
@@ -1776,9 +1775,9 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
           if (ConstantExpr *leftCE = dyn_cast<ConstantExpr>(currLeft)) {
             std::string currLeftStr;
             leftCE->toString(currLeftStr, 10);
-            valueStr += ("b" + std::to_string(currByte) + "_" + currLeftStr + "_");
+            valueStr += ("b" + std::to_string(currByte) + "(" + currLeftStr + ")_");
           } else {
-            valueStr += ("b" + std::to_string(currByte) + "_sym_");
+            valueStr += ("b" + std::to_string(currByte) + "(sym)_");
           }
           currByte++;
           currLeft->dump();
@@ -1788,9 +1787,9 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         if (ConstantExpr *lastCE = dyn_cast<ConstantExpr>(currRight->getRight())) {
           std::string currLeftStr;
           lastCE->toString(currLeftStr, 10);
-          valueStr += ("b" + std::to_string(currByte) + "_" + currLeftStr + "_");
+          valueStr += ("b" + std::to_string(currByte) + "(" + currLeftStr + ")_");
         } else {
-          valueStr += ("b" + std::to_string(currByte) + "_sym_");
+          valueStr += ("b" + std::to_string(currByte) + "(sym)_");
         }
         keyName = valueStr;
         llvm::errs() << "Final key name " << keyName << "\n";
@@ -1799,7 +1798,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         Expr::printKind(llvm::errs(), readValue->getKind());
         readValue->dump();
         osarg->print();
-        // assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
+        assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
       }
     } else {
       llvm::errs() << "Not handled type ";
@@ -1807,7 +1806,12 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       lookupKey->dump();
       assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
     }
-    state.addRead(mapName + "." + keyName);
+    if (fName == "bpf_map_lookup_elem") {
+      state.addRead(mapName + "." + keyName);
+    } else if (fName == "bpf_map_update_elem") {
+      llvm::errs() << "Updated map " << mapName << " with key of " << keyName << "\n";
+      state.addWrite(mapName + "." + keyName);
+    }
   }
 
   Instruction *i = ki->inst;
