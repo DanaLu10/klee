@@ -2689,6 +2689,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
     bindLocal(ki, state, AddExpr::create(left, right));
+
+    if (state.isReferenceToArg(i->getOperand(0)) 
+        || state.isReferenceToArg(i->getOperand(1))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a Add: ";
+      i->dump();
+    }
     break;
   }
 
@@ -2696,6 +2703,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
     bindLocal(ki, state, SubExpr::create(left, right));
+
+    if (state.isReferenceToArg(i->getOperand(0)) 
+        || state.isReferenceToArg(i->getOperand(1))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a Sub: ";
+      i->dump();
+    }
     break;
   }
  
@@ -2703,6 +2717,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
     bindLocal(ki, state, MulExpr::create(left, right));
+
+    if (state.isReferenceToArg(i->getOperand(0)) 
+        || state.isReferenceToArg(i->getOperand(1))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a Mul: ";
+      i->dump();
+    }
     break;
   }
 
@@ -2743,6 +2764,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> right = eval(ki, 1, state).value;
     ref<Expr> result = AndExpr::create(left, right);
     bindLocal(ki, state, result);
+
+    if (state.isReferenceToArg(i->getOperand(0)) 
+        || state.isReferenceToArg(i->getOperand(1))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a And: ";
+      i->dump();
+    }
     break;
   }
 
@@ -2751,6 +2779,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> right = eval(ki, 1, state).value;
     ref<Expr> result = OrExpr::create(left, right);
     bindLocal(ki, state, result);
+
+    if (state.isReferenceToArg(i->getOperand(0)) 
+        || state.isReferenceToArg(i->getOperand(1))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a Or: ";
+      i->dump();
+    }
     break;
   }
 
@@ -2759,6 +2794,13 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> right = eval(ki, 1, state).value;
     ref<Expr> result = XorExpr::create(left, right);
     bindLocal(ki, state, result);
+
+    if (state.isReferenceToArg(i->getOperand(0)) 
+        || state.isReferenceToArg(i->getOperand(1))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a Xor: ";
+      i->dump();
+    }
     break;
   }
 
@@ -2911,6 +2953,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> base = eval(ki, 0, state).value;
     ref<Expr> original_base = base;
 
+    if (state.isReferenceToArg(i->getOperand(0))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a getElementPtr: ";
+      i->dump();
+    }
+
     for (std::vector< std::pair<unsigned, uint64_t> >::iterator 
            it = kgepi->indices.begin(), ie = kgepi->indices.end(); 
          it != ie; ++it) {
@@ -2974,6 +3022,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                                            0,
                                            getWidthForLLVMType(ci->getType()));
     bindLocal(ki, state, result);
+
+    if (state.isReferenceToArg(i->getOperand(0))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a Trunc: ";
+      i->dump();
+    }
     break;
   }
   case Instruction::ZExt: {
@@ -2981,6 +3035,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> result = ZExtExpr::create(eval(ki, 0, state).value,
                                         getWidthForLLVMType(ci->getType()));
     bindLocal(ki, state, result);
+
+    if (state.isReferenceToArg(i->getOperand(0))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a ZExt: ";
+      i->dump();
+    }
     break;
   }
   case Instruction::SExt: {
@@ -2988,6 +3048,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> result = SExtExpr::create(eval(ki, 0, state).value,
                                         getWidthForLLVMType(ci->getType()));
     bindLocal(ki, state, result);
+    
+    if (state.isReferenceToArg(i->getOperand(0))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a SExt: ";
+      i->dump();
+    }
     break;
   }
 
@@ -2996,6 +3062,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     Expr::Width pType = getWidthForLLVMType(ci->getType());
     ref<Expr> arg = eval(ki, 0, state).value;
     bindLocal(ki, state, ZExtExpr::create(arg, pType));
+
+    if (state.isReferenceToArg(i->getOperand(0))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a IntToPtr: ";
+      i->dump();
+    }
     break;
   }
   case Instruction::PtrToInt: {
@@ -3009,6 +3081,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::BitCast: {
     ref<Expr> result = eval(ki, 0, state).value;
     bindLocal(ki, state, result);
+
+    if (state.isReferenceToArg(i->getOperand(0))) {
+      state.addReferenceToArg(i);
+      llvm::errs() << "Added reference to a IntToPtr: ";
+      i->dump();
+    }
     break;
   }
 
@@ -4531,37 +4609,57 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   if (isWrite) {
     // add to write set
     if (i->getNumOperands() > 1 
-        && i->getOpcode() == 33 
+        && i->getOpcode() == 33   // Store instruction
         && std::find(removedNames.begin(), removedNames.end(), i->getOperand(1)->getName().str()) == removedNames.end()
         && std::find(removedFunctions.begin(), removedFunctions.end(), i->getFunction()->getName().str()) == removedFunctions.end()) {
-      state.addWrite(i->getOperand(1)->getName().str());
-      if (i->getOperand(0)->getName().str() != "") {
-        state.addRead(i->getOperand(0)->getName().str());
+      // store <type> <value>, <type*> <location>
+      // <value> is the first operand, the value to be stored 
+      // <location> is second operand, the location at which to store the value
+      Value *firstOperand = i->getOperand(0);
+      Value *secondOperand = i->getOperand(1);
+
+      if (state.isReferenceToArg(firstOperand)) {
+        state.addReferenceToArg(secondOperand);
+        state.printReferences();
+        if (firstOperand->getName().str() != "") {
+          state.addRead(firstOperand->getName().str());
+        }
       }
-      // if (i->getOperand(1)->getName().str() == "__environ" || i->getOperand(1)->getName().str() == "myVariable" || i->getOperand(1)->getName().str() ==  "__uClibc_init.been_there_done_that" || i->getOperand(1)->getName().str() == "__pagesize") {
-      // if (i->getDebugLoc()) {
-      // // if (i->getOperand(1)->getName().str() == "csum.addr.i106") {
-      //   i->print(llvm::errs());
-      //   llvm::errs() << "\nInstruction has info"; //<<  i->getDebugLoc()->getLine() << ", and column " << i->getDebugLoc()->getColumn() << "\n";
-      //   i->getDebugLoc()->print(llvm::errs());
-      //   llvm::errs() << "This instruction is in function " << i->getFunction()->getName().str() << "\n"; 
-      //   llvm::errs() << "***************\n";
-      // } else {
-      //   llvm::errs() << "This instruction has no debug info:";
-      //   i->print(llvm::errs());
-      //   llvm::errs() << "\n";
-      // }
-      // }
+
+      if (state.isReferenceToArg(secondOperand)) {
+        state.addWrite(secondOperand->getName().str());
+      }
+
+      std::string argName = i->getFunction()->getArg(0)->getName().str();
+      if (firstOperand->getName().str() == argName) {
+        if (firstOperand->getType()->isPointerTy() 
+            && firstOperand->getType()->getPointerElementType()->isStructTy()) {
+          llvm::StructType *structTy = cast<llvm::StructType>(firstOperand->getType()->getPointerElementType());  
+          // llvm::errs() << "Name of struct " << structTy->getName() << "\n";
+          if (structTy->getName().str() == "struct.xdp_md") {
+            // this stores argument.
+            state.addReferenceToArg(secondOperand);
+          }
+        } else {
+          assert(0 && "Error: expected pointer type!");
+        }
+      }
       
     }
   } else {
     // add to read set
     if (i->getNumOperands() > 0
-        && i->getOpcode() == 32
+        && i->getOpcode() == 32   // Load instruction
         && std::find(removedNames.begin(), removedNames.end(), i->getOperand(0)->getName().str()) == removedNames.end()
         && std::find(removedFunctions.begin(), removedFunctions.end(), i->getFunction()->getName().str()) == removedFunctions.end()) {
-      state.addRead(i->getOperand(0)->getName().str());
+      Value *firstOperand = i->getOperand(0);
+
+      if (state.isReferenceToArg(firstOperand)) {
+        state.addReferenceToArg(i);
+        state.addRead(firstOperand->getName().str());
+      }
     }
+    
   }
 
   Expr::Width type = (isWrite ? value->getWidth() : 

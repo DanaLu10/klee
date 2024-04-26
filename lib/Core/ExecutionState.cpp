@@ -119,7 +119,8 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     base_addrs(state.base_addrs),
     base_mos(state.base_mos),
     readSet(state.readSet),
-    writeSet(state.writeSet) {
+    writeSet(state.writeSet),
+    referencesToArg(state.referencesToArg) {
   for (const auto &cur_mergehandler: openMergeStack)
     cur_mergehandler->addOpenState(this);
 }
@@ -137,6 +138,23 @@ ExecutionState *ExecutionState::branch() {
 
 void ExecutionState::addRead(std::string newRead) {
   readSet.insert(newRead);
+}
+
+void ExecutionState::addReferenceToArg(llvm::Value *val) {
+  referencesToArg.insert(val);
+}
+
+bool ExecutionState::isReferenceToArg(llvm::Value *val) {
+  return referencesToArg.find(val) != referencesToArg.end();
+}
+
+void ExecutionState::printReferences() {
+  llvm::errs() << "References to the arguments:\n";
+  llvm::errs() << "{ ";
+  for (auto const& reference : referencesToArg) {
+    reference->dump();
+  }
+  llvm::errs() << "}\n";
 }
 
 void ExecutionState::addWrite(std::string newWrite) {

@@ -22,6 +22,8 @@
 #include "klee/Module/KInstIterator.h"
 #include "klee/Solver/Solver.h"
 #include "klee/System/Time.h"
+#include "llvm/IR/Value.h"
+#include <unordered_set>
 
 #include <map>
 #include <memory>
@@ -261,6 +263,9 @@ public:
   /// @brief Write set of path.
   std::set<std::string> writeSet;
 
+  /// @brief Set of values which may hold references to the arguments of a function
+  std::unordered_set<llvm::Value*> referencesToArg;
+
 public:
 #ifdef KLEE_UNITTEST
   // provide this function only in the context of unittests
@@ -281,6 +286,10 @@ public:
 
   void addRead(std::string newRead);
   void addWrite(std::string newWrite);
+
+  void addReferenceToArg(llvm::Value *val);
+  bool isReferenceToArg(llvm::Value *val);
+  void printReferences();
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
