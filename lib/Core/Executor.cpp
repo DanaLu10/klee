@@ -2960,6 +2960,20 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       i->dump();
     }
 
+    if (llvm::GetElementPtrInst *getElemPtr = dyn_cast<llvm::GetElementPtrInst>(i)) {
+      if (getElemPtr->isInBounds() 
+          && getElemPtr->getSourceElementType()->isStructTy()) {
+        llvm::errs() << "Instruction has in bounds flag ";
+        getElemPtr->dump();
+        llvm::StructType *structType = cast<llvm::StructType>(getElemPtr->getSourceElementType());
+        std::string structName = structType->getName().str();  
+        std::string finalName = structName + "." + getElemPtr->getName().str();
+        llvm::errs() << "New Name for value " << finalName << "\n";
+        llvm::Twine newName = finalName;
+        getElemPtr->setName(newName);
+      }
+    }
+
     for (std::vector< std::pair<unsigned, uint64_t> >::iterator 
            it = kgepi->indices.begin(), ie = kgepi->indices.end(); 
          it != ie; ++it) {
@@ -4622,14 +4636,14 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 
       if (state.isReferenceToArg(firstOperand)) {
         state.addReferenceToArg(secondOperand);
-        state.printReferences();
+        // state.printReferences();
         if (firstOperand->getName().str() != "") {
-          state.addRead(firstOperand->getName().str());
+          state.addRead("struct.xdp_md." + firstOperand->getName().str());
         }
       }
 
       if (state.isReferenceToArg(secondOperand)) {
-        state.addWrite(secondOperand->getName().str());
+        state.addWrite("struct.xdp_md." + secondOperand->getName().str());
       }
 
       for (llvm::Argument *arg = i->getFunction()->arg_begin(); arg != i->getFunction()->arg_end(); arg++) {
@@ -4657,7 +4671,11 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 
       if (state.isReferenceToArg(firstOperand)) {
         state.addReferenceToArg(i);
-        state.addRead(firstOperand->getName().str());
+        // std::string readName = firstOperand->getName().str();
+        // if (firstOperand->getName().str().rfind("struct.", 0) == 0) {
+        //   read
+        // }
+        state.addRead("struct.xdp_md." + firstOperand->getName().str());
       }
     }
     
