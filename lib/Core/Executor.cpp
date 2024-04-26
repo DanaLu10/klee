@@ -1717,6 +1717,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     std::string mapName = "unk_map";
     unsigned keySize = 32;
     Instruction *i = ki->inst;
+
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
       mapName = "map:" + bitcastMap->getOperand(0)->getName().str();
       llvm::errs() << "Name of map is " << (bitcastMap->getOperand(0)->getName().str()) << "\n";
@@ -4604,7 +4605,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
   std::vector<std::string> removedFunctions{"__uClibc_main", "__uClibc_init", "__uClibc_fini", 
     "exit", "map_allocate", "map_lookup_elem", "map_update_elem", "map_delete_elem", 
     "map_of_map_allocate", "map_of_map_lookup_elem", "bpf_map_init_stub"  ,
-    "bpf_map_lookup_elem", "bpf_map_reset_stub", ""};
+    "bpf_map_lookup_elem", "bpf_map_reset_stub", "array_allocate", "bpf_map_update_elem",
+    "array_update_elem", "bpf_redirect_map", "map_update_elem", "array_lookup_elem", ""};
   Instruction *i = state.prevPC->inst;
   if (isWrite) {
     // add to write set
@@ -4630,18 +4632,17 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         state.addWrite(secondOperand->getName().str());
       }
 
-      std::string argName = i->getFunction()->getArg(0)->getName().str();
-      if (firstOperand->getName().str() == argName) {
-        if (firstOperand->getType()->isPointerTy() 
-            && firstOperand->getType()->getPointerElementType()->isStructTy()) {
-          llvm::StructType *structTy = cast<llvm::StructType>(firstOperand->getType()->getPointerElementType());  
-          // llvm::errs() << "Name of struct " << structTy->getName() << "\n";
-          if (structTy->getName().str() == "struct.xdp_md") {
-            // this stores argument.
-            state.addReferenceToArg(secondOperand);
+      for (llvm::Argument *arg = i->getFunction()->arg_begin(); arg != i->getFunction()->arg_end(); arg++) {
+        std::string argName = arg->getName().str();
+        if (firstOperand->getName().str() == argName) {
+          if (firstOperand->getType()->isPointerTy() 
+              && firstOperand->getType()->getPointerElementType()->isStructTy()) {
+            llvm::StructType *structTy = cast<llvm::StructType>(firstOperand->getType()->getPointerElementType());  
+            if (structTy->getName().str() == "struct.xdp_md") {
+              // this stores argument.
+              state.addReferenceToArg(secondOperand);
+            }
           }
-        } else {
-          assert(0 && "Error: expected pointer type!");
         }
       }
       
