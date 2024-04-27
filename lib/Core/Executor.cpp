@@ -1711,8 +1711,9 @@ ref<klee::ConstantExpr> Executor::getEhTypeidFor(ref<Expr> type_info) {
 void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
                            std::vector<ref<Expr>> &arguments) {
   std::string fName = f->getName().str();
-  if (fName == "bpf_map_lookup_elem" || fName == "bpf_map_update_elem") {
-    llvm::errs() << "**** processing special function bpf_map_lookup_elem";
+  if (fName == "bpf_map_lookup_elem" || fName == "bpf_map_update_elem" 
+      || fName == "bpf_map_delete_elem" || fName == "bpf_redirect_map") {
+    llvm::errs() << "**** processing special function " << fName << "\n";
     std::string keyName = "unk_key";
     std::string mapName = "unk_map";
     unsigned keySize = 32;
@@ -1743,9 +1744,10 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     ref<Expr> mapObj = arguments[0];
     ref<Expr> lookupKey = arguments[1];
     
-    if (ConstantExpr *ce = dyn_cast<ConstantExpr>(lookupKey)) {
+    if (fName != "bpf_redirect_map" && isa<ConstantExpr>(lookupKey)) {
       // for bpf_map_lookup_elem, the lookup key is a pointer to a value
       // so we need to get the value stored in the pointer
+      ConstantExpr *ce = cast<ConstantExpr>(lookupKey);
       ObjectPair op;
       bool success;
       state.addressSpace.resolveOne(state, solver.get(), ce, op, success);
@@ -1801,15 +1803,50 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         osarg->print();
         assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
       }
+    } else if (fName == "bpf_redirect_map") {
+      if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(lookupKey)) {
+        std::string valueStr;
+        valueCE->toString(valueStr, 10);
+        llvm::errs() << "\nKey is already a value, not a pointer, value is " << valueStr << "\n"; 
+        keyName = valueStr;
+      } else if (CastExpr *castExpr = dyn_cast<CastExpr>(lookupKey)) {
+        ref<Expr> kid = castExpr->getKid(0);
+        std::string valueStr;
+        switch(kid->getKind()) {
+          case (Expr::Constant): {
+            ConstantExpr *constantExpr = cast<ConstantExpr>(kid);
+            constantExpr->toString(valueStr, 10);
+            llvm::errs() << "\nKid of a cast expr has value " << valueStr << "\n"; 
+            keyName = valueStr;
+            break;
+          }
+          case (Expr::Read): {
+            keyName = "sym";
+            break;
+          }
+          default: {
+            llvm::errs() << "Not handled type of kid ";
+            Expr::printKind(llvm::errs(), kid->getKind());
+            llvm::errs() << "\n";
+            kid->dump();
+            assert(0 && "Error: handling of kid type not implemented");
+            break;
+          }
+        }
+      } else {
+
+      }
     } else {
       llvm::errs() << "Not handled type ";
       Expr::printKind(llvm::errs(), lookupKey->getKind());
+      llvm::errs() << "\n";
       lookupKey->dump();
       assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
     }
-    if (fName == "bpf_map_lookup_elem") {
+
+    if (fName == "bpf_map_lookup_elem" || fName == "bpf_redirect_map") {
       state.addRead(mapName + "." + keyName);
-    } else if (fName == "bpf_map_update_elem") {
+    } else if (fName == "bpf_map_update_elem" || fName == "bpf_map_delete_elem") {
       llvm::errs() << "Updated map " << mapName << " with key of " << keyName << "\n";
       state.addWrite(mapName + "." + keyName);
     }
