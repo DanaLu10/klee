@@ -266,6 +266,9 @@ public:
   /// @brief Set of values which may hold references to the arguments of a function
   std::unordered_set<llvm::Value*> referencesToArg;
 
+  /// @brief Set of values which are part of the references to the arguments of a function
+  std::unordered_set<llvm::Value*> argContents;
+
 public:
 #ifdef KLEE_UNITTEST
   // provide this function only in the context of unittests
@@ -290,6 +293,9 @@ public:
   void addReferenceToArg(llvm::Value *val);
   bool isReferenceToArg(llvm::Value *val);
   void printReferences();
+
+  void addArgContent(llvm::Value *val);
+  bool isArgContent(llvm::Value *val);
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();

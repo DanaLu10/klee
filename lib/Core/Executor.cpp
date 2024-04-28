@@ -1721,7 +1721,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
 
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
       mapName = "map:" + bitcastMap->getOperand(0)->getName().str();
-      llvm::errs() << "Name of map is " << (bitcastMap->getOperand(0)->getName().str()) << "\n";
+      // llvm::errs() << "Name of map is " << (bitcastMap->getOperand(0)->getName().str()) << "\n";
       // Obtain original size of key before bitcast into void pointer
       if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
         llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
@@ -1739,7 +1739,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       assert(0 && "Error: No implementation for if no bitcast");
     }
 
-    llvm::errs() << "Final size " << keySize << "\n";
+    // llvm::errs() << "Final size " << keySize << "\n";
 
     ref<Expr> mapObj = arguments[0];
     ref<Expr> lookupKey = arguments[1];
@@ -1762,7 +1762,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(readValue)) {
         std::string valueStr;
         valueCE->toString(valueStr, 10);
-        llvm::errs() << "\nSuccessfully cast read value to constant expression, value is " << valueStr << "\n"; 
+        // llvm::errs() << "\nSuccessfully cast read value to constant expression, value is " << valueStr << "\n"; 
         keyName = valueStr;
       } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(readValue)) {
         // Parts of this read contains symbolic bytes
@@ -1783,7 +1783,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
             valueStr += ("b" + std::to_string(currByte) + "(sym)_");
           }
           currByte++;
-          currLeft->dump();
+          // currLeft->dump();
         } while ((currRight->getRight()->getKind() == Expr::Concat) && (currRight = dyn_cast<ConcatExpr>(currRight->getRight())));
         // while there is more to read
 
@@ -1807,7 +1807,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(lookupKey)) {
         std::string valueStr;
         valueCE->toString(valueStr, 10);
-        llvm::errs() << "\nKey is already a value, not a pointer, value is " << valueStr << "\n"; 
+        // llvm::errs() << "\nKey is already a value, not a pointer, value is " << valueStr << "\n"; 
         keyName = valueStr;
       } else if (CastExpr *castExpr = dyn_cast<CastExpr>(lookupKey)) {
         ref<Expr> kid = castExpr->getKid(0);
@@ -1847,7 +1847,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     if (fName == "bpf_map_lookup_elem" || fName == "bpf_redirect_map") {
       state.addRead(mapName + "." + keyName);
     } else if (fName == "bpf_map_update_elem" || fName == "bpf_map_delete_elem") {
-      llvm::errs() << "Updated map " << mapName << " with key of " << keyName << "\n";
+      // llvm::errs() << "Updated map " << mapName << " with key of " << keyName << "\n";
       state.addWrite(mapName + "." + keyName);
     }
   }
@@ -2997,18 +2997,22 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       i->dump();
     }
 
-    if (llvm::GetElementPtrInst *getElemPtr = dyn_cast<llvm::GetElementPtrInst>(i)) {
-      if (getElemPtr->isInBounds() 
-          && getElemPtr->getSourceElementType()->isStructTy()) {
-        llvm::errs() << "Instruction has in bounds flag ";
-        getElemPtr->dump();
-        llvm::StructType *structType = cast<llvm::StructType>(getElemPtr->getSourceElementType());
-        std::string structName = structType->getName().str();  
-        std::string finalName = structName + "." + getElemPtr->getName().str();
-        llvm::errs() << "New Name for value " << finalName << "\n";
-        llvm::Twine newName = finalName;
-        getElemPtr->setName(newName);
-      }
+    llvm::GetElementPtrInst *getElemPtr = cast<llvm::GetElementPtrInst>(i);
+    if (getElemPtr->isInBounds() 
+        && getElemPtr->getSourceElementType()->isStructTy()) {
+      // llvm::errs() << "Instruction has in bounds flag ";
+      // getElemPtr->dump();
+      llvm::StructType *structType = cast<llvm::StructType>(getElemPtr->getSourceElementType());
+      std::string structName = structType->getName().str(); 
+      if (structName == "struct.xdp_md") {
+        state.addArgContent(i);
+        llvm::errs() << "Arg content referenced by instruction ";
+        i->dump();
+      } 
+      std::string finalName = structName + "." + getElemPtr->getName().str();
+      // llvm::errs() << "New Name for value " << finalName << "\n";
+      llvm::Twine newName = finalName;
+      getElemPtr->setName(newName);
     }
 
     for (std::vector< std::pair<unsigned, uint64_t> >::iterator 
@@ -4653,7 +4657,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
   std::vector<std::string> removedNames{"", "retval", "argc.addr", "argv.addr"};
-  std::vector<std::string> removedFunctions{"__uClibc_main", "__uClibc_init", "__uClibc_fini", 
+  std::vector<std::string> removedFunctions{"__uClibc_main", "__uClibc_init", "__uClibc_fini", "__user_main",
     "exit", "map_allocate", "map_lookup_elem", "map_update_elem", "map_delete_elem", 
     "map_of_map_allocate", "map_of_map_lookup_elem", "bpf_map_init_stub"  ,
     "bpf_map_lookup_elem", "bpf_map_reset_stub", "array_allocate", "bpf_map_update_elem",
@@ -4671,6 +4675,15 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       Value *firstOperand = i->getOperand(0);
       Value *secondOperand = i->getOperand(1);
 
+      if (state.isReferenceToArg(secondOperand)) {
+        if (secondOperand->getName().str() == "ingress_ifindex") {
+          llvm::errs() << "Instruction writing to ingress_ifindex ";
+          i->dump();
+          secondOperand->dump();
+        }
+        state.addWrite("struct.xdp_md." + secondOperand->getName().str());
+      }
+
       if (state.isReferenceToArg(firstOperand)) {
         state.addReferenceToArg(secondOperand);
         // state.printReferences();
@@ -4679,9 +4692,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         }
       }
 
-      if (state.isReferenceToArg(secondOperand)) {
-        state.addWrite("struct.xdp_md." + secondOperand->getName().str());
-      }
 
       for (llvm::Argument *arg = i->getFunction()->arg_begin(); arg != i->getFunction()->arg_end(); arg++) {
         std::string argName = arg->getName().str();
@@ -4692,6 +4702,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             if (structTy->getName().str() == "struct.xdp_md") {
               // this stores argument.
               state.addReferenceToArg(secondOperand);
+              state.addArgContent(secondOperand);
             }
           }
         }
@@ -4708,11 +4719,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
 
       if (state.isReferenceToArg(firstOperand)) {
         state.addReferenceToArg(i);
-        // std::string readName = firstOperand->getName().str();
-        // if (firstOperand->getName().str().rfind("struct.", 0) == 0) {
-        //   read
-        // }
-        state.addRead("struct.xdp_md." + firstOperand->getName().str());
+        if (!state.isArgContent(firstOperand)) {
+          state.addRead("struct.xdp_md." + firstOperand->getName().str());
+        }
       }
     }
     
