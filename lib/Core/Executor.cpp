@@ -98,6 +98,7 @@
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <vector>
+#include <regex>
 
 using namespace llvm;
 using namespace klee;
@@ -1713,7 +1714,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
   std::string fName = f->getName().str();
   if (fName == "bpf_map_lookup_elem" || fName == "bpf_map_update_elem" 
       || fName == "bpf_map_delete_elem" || fName == "bpf_redirect_map") {
-    llvm::errs() << "**** processing special function " << fName << "\n";
+    // llvm::errs() << "**** processing special function " << fName << "\n";
     std::string keyName = "unk_key";
     std::string mapName = "unk_map";
     unsigned keySize = 32;
@@ -1795,7 +1796,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
           valueStr += ("b" + std::to_string(currByte) + "(sym)_");
         }
         keyName = valueStr;
-        llvm::errs() << "Final key name " << keyName << "\n";
+        // llvm::errs() << "Final key name " << keyName << "\n";
       } else {
         llvm::errs() << "Not handled type ";
         Expr::printKind(llvm::errs(), readValue->getKind());
@@ -1816,7 +1817,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
           case (Expr::Constant): {
             ConstantExpr *constantExpr = cast<ConstantExpr>(kid);
             constantExpr->toString(valueStr, 10);
-            llvm::errs() << "\nKid of a cast expr has value " << valueStr << "\n"; 
+            // llvm::errs() << "\nKid of a cast expr has value " << valueStr << "\n"; 
             keyName = valueStr;
             break;
           }
@@ -2260,6 +2261,21 @@ Function *Executor::getTargetFunction(Value *calledVal) {
   }
 }
 
+void Executor::updateInlineName(ExecutionState &state, llvm::Instruction *instr, int opPos) {
+  std::string opName = instr->getOperand(opPos)->getName().str();
+  if (opName.find(':') != std::string::npos 
+      && instr->getName().str().find(':') == std::string::npos) {
+    std::string::size_type pos = opName.find(':');
+    assert(pos != std::string::npos && "Error: invalid format for inlined function variable name");
+    std::string scope = opName.substr(0, pos);
+    std::string originalName = instr->hasName() ? instr->getName().str() : state.getNextRegNameAndIncrement();
+    std::string finalName = scope + ":" + originalName;
+    llvm::errs() << "Updated name of load to " << finalName << "\n";
+    llvm::Twine newName = finalName;
+    instr->setName(newName);
+  }
+}
+
 void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   Instruction *i = ki->inst;
   switch (i->getOpcode()) {
@@ -2590,8 +2606,24 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Invoke:
   case Instruction::Call: {
     // Ignore debug intrinsic calls
-    if (isa<DbgInfoIntrinsic>(i))
+    if (isa<DbgInfoIntrinsic>(i) && !isa<DbgDeclareInst>(i))
       break;
+
+    if (isa<DbgDeclareInst>(i)) {
+      llvm::DbgDeclareInst *debugInst = cast<llvm::DbgDeclareInst>(i);
+      Value *allocaInst = debugInst->getAddress();
+      if (state.isInlinedFunctionVar(allocaInst)) {
+        std::string funcName = debugInst->getVariable()->getScope()->getSubprogram()->getName().str();
+        llvm::errs() << "Inlined function var debug declared\n";
+        llvm::errs() << "Name of scope: " << funcName << "\n";
+        std::string inlinedVarName = funcName + ":" + allocaInst->getName().str();
+        llvm::Twine newName = inlinedVarName;
+        llvm::errs() << "Inlined var name was changed to " << inlinedVarName << "\n";
+        allocaInst->setName(newName);
+      }
+      // ->getName().str()
+      break;
+    }
 
     const CallBase &cb = cast<CallBase>(*i);
     Value *fp = cb.getCalledOperand();
@@ -2731,8 +2763,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (state.isReferenceToArg(i->getOperand(0)) 
         || state.isReferenceToArg(i->getOperand(1))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a Add: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a Add: ";
+      // i->dump();
     }
     break;
   }
@@ -2745,8 +2777,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (state.isReferenceToArg(i->getOperand(0)) 
         || state.isReferenceToArg(i->getOperand(1))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a Sub: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a Sub: ";
+      // i->dump();
     }
     break;
   }
@@ -2759,8 +2791,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (state.isReferenceToArg(i->getOperand(0)) 
         || state.isReferenceToArg(i->getOperand(1))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a Mul: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a Mul: ";
+      // i->dump();
     }
     break;
   }
@@ -2806,8 +2838,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (state.isReferenceToArg(i->getOperand(0)) 
         || state.isReferenceToArg(i->getOperand(1))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a And: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a And: ";
+      // i->dump();
     }
     break;
   }
@@ -2821,8 +2853,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (state.isReferenceToArg(i->getOperand(0)) 
         || state.isReferenceToArg(i->getOperand(1))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a Or: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a Or: ";
+      // i->dump();
     }
     break;
   }
@@ -2836,8 +2868,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     if (state.isReferenceToArg(i->getOperand(0)) 
         || state.isReferenceToArg(i->getOperand(1))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a Xor: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a Xor: ";
+      // i->dump();
     }
     break;
   }
@@ -2962,6 +2994,12 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     // Memory instructions...
   case Instruction::Alloca: {
     AllocaInst *ai = cast<AllocaInst>(i);
+
+    if (state.isInlinedFunctionVar(i)) {
+      state.addInlinedFunctionVar(i);
+      llvm::errs() << "Added an inlined variable ";
+      i->dump();
+    }
     unsigned elementSize = 
       kmodule->targetData->getTypeStoreSize(ai->getAllocatedType());
     ref<Expr> size = Expr::createPointer(elementSize);
@@ -2993,27 +3031,41 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     if (state.isReferenceToArg(i->getOperand(0))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a getElementPtr: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a getElementPtr: ";
+      // i->dump();
     }
 
+
     llvm::GetElementPtrInst *getElemPtr = cast<llvm::GetElementPtrInst>(i);
+
     if (getElemPtr->isInBounds() 
         && getElemPtr->getSourceElementType()->isStructTy()) {
       // llvm::errs() << "Instruction has in bounds flag ";
       // getElemPtr->dump();
       llvm::StructType *structType = cast<llvm::StructType>(getElemPtr->getSourceElementType());
       std::string structName = structType->getName().str(); 
+      std::string originalName = getElemPtr->getName().str();
+      bool isIpHdrAnon = (structName == "struct.anon")
+                         && (getElemPtr->getOperand(0)->getName().str().rfind("struct.iphdr", 0) == 0);
       if (structName == "struct.xdp_md") {
         state.addArgContent(i);
-        llvm::errs() << "Arg content referenced by instruction ";
-        i->dump();
+        // llvm::errs() << "Arg content referenced by instruction ";
+        // i->dump();
       } 
-      std::string finalName = structName + "." + getElemPtr->getName().str();
-      // llvm::errs() << "New Name for value " << finalName << "\n";
-      llvm::Twine newName = finalName;
-      getElemPtr->setName(newName);
+
+      if (isIpHdrAnon) {
+        structName = "struct.iphdr";
+      }
+
+      if (originalName.rfind(structName, 0) != 0) {
+        originalName = originalName != "" ? originalName : state.getNextRegNameAndIncrement();
+        std::string finalName = structName + "." + originalName;
+        llvm::Twine newName = finalName;
+        getElemPtr->setName(newName);
+      }
     }
+
+    updateInlineName(state, getElemPtr, 0);
 
     for (std::vector< std::pair<unsigned, uint64_t> >::iterator 
            it = kgepi->indices.begin(), ie = kgepi->indices.end(); 
@@ -3081,8 +3133,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     if (state.isReferenceToArg(i->getOperand(0))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a Trunc: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a Trunc: ";
+      // i->dump();
     }
     break;
   }
@@ -3094,8 +3146,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     if (state.isReferenceToArg(i->getOperand(0))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a ZExt: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a ZExt: ";
+      // i->dump();
     }
     break;
   }
@@ -3107,8 +3159,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     
     if (state.isReferenceToArg(i->getOperand(0))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a SExt: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a SExt: ";
+      // i->dump();
     }
     break;
   }
@@ -3121,8 +3173,8 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     if (state.isReferenceToArg(i->getOperand(0))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a IntToPtr: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a IntToPtr: ";
+      // i->dump();
     }
     break;
   }
@@ -3140,9 +3192,31 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
 
     if (state.isReferenceToArg(i->getOperand(0))) {
       state.addReferenceToArg(i);
-      llvm::errs() << "Added reference to a IntToPtr: ";
-      i->dump();
+      // llvm::errs() << "Added reference to a IntToPtr: ";
+      // i->dump();
     }
+
+    llvm::BitCastInst *bitcastInst = cast<llvm::BitCastInst>(i);
+
+    if (bitcastInst->getDestTy()->isPointerTy() 
+        && bitcastInst->getDestTy()->getPointerElementType()->isStructTy()) {
+      llvm::StructType *structType = cast<llvm::StructType>(bitcastInst->getDestTy()->getPointerElementType());
+      std::string operandName = bitcastInst->getOperand(0)->getName().str();
+      std::string oldName = bitcastInst->getName().str();
+      if (structType->getName().str() == "struct.anon" 
+          && operandName.rfind("struct.iphdr", 0) == 0 
+          && oldName.rfind("struct.iphdr", 0) != 0) {
+        // Special case: the ip header has a __struct_group for the source and destination address,
+        // which in this case is translated into an anonymous struct in llvm
+        oldName = oldName != "" ? oldName : state.getNextRegNameAndIncrement();
+        std::string newOperandName = "struct.iphdr." + oldName;
+        llvm::Twine newName = newOperandName;
+        bitcastInst->setName(newName);
+        // bitcastInst->dump();
+      }
+    }
+
+    updateInlineName(state, bitcastInst, 0);
     break;
   }
 
@@ -4651,44 +4725,68 @@ void Executor::resolveExact(ExecutionState &state,
   }
 }
 
+std::string Executor::formatName(std::string name) {
+  if (name.find(':') != std::string::npos) {
+    std::string::size_type pos = name.find(':') + 1;
+    assert(pos != std::string::npos && "Error: invalid format for inlined function variable name");
+    std::string scope = name.substr(0, pos);
+    std::string remainingName = name.substr(pos);
+    if (remainingName == "117") {
+      llvm::errs() << "this was reached";
+      exit(1);
+    }
+    return scope + "struct.xdp_md." + remainingName;
+  }
+  return "struct.xdp_md." + name;
+}
+
+bool Executor::isNotTempVar(std::string varName) {
+  const std::regex tempVarRegex("((.)+\\.[0-9]+)");
+
+  if (std::regex_match(varName, tempVarRegex)) {
+    llvm::errs() << "Regex matched on " << varName << "\n";
+    return false;
+  }
+  return true;
+}
+
 void Executor::executeMemoryOperation(ExecutionState &state,
                                       bool isWrite,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
-  std::vector<std::string> removedNames{"", "retval", "argc.addr", "argv.addr"};
-  std::vector<std::string> removedFunctions{"__uClibc_main", "__uClibc_init", "__uClibc_fini", "__user_main",
-    "exit", "map_allocate", "map_lookup_elem", "map_update_elem", "map_delete_elem", 
-    "map_of_map_allocate", "map_of_map_lookup_elem", "bpf_map_init_stub"  ,
-    "bpf_map_lookup_elem", "bpf_map_reset_stub", "array_allocate", "bpf_map_update_elem",
-    "array_update_elem", "bpf_redirect_map", "map_update_elem", "array_lookup_elem", ""};
+  // std::vector<std::string> removedNames{"", "retval", "argc.addr", "argv.addr"};
   Instruction *i = state.prevPC->inst;
   if (isWrite) {
-    // add to write set
+    add to write set
     if (i->getNumOperands() > 1 
         && i->getOpcode() == 33   // Store instruction
-        && std::find(removedNames.begin(), removedNames.end(), i->getOperand(1)->getName().str()) == removedNames.end()
-        && std::find(removedFunctions.begin(), removedFunctions.end(), i->getFunction()->getName().str()) == removedFunctions.end()) {
+        && state.isValueForAnalysis(i->getOperand(1))
+        && state.isFunctionForAnalysis(i->getFunction())) {
       // store <type> <value>, <type*> <location>
       // <value> is the first operand, the value to be stored 
       // <location> is second operand, the location at which to store the value
       Value *firstOperand = i->getOperand(0);
       Value *secondOperand = i->getOperand(1);
 
-      if (state.isReferenceToArg(secondOperand)) {
+      if (state.isReferenceToArg(secondOperand) && !state.isAddressValue(secondOperand)) {
         if (secondOperand->getName().str() == "ingress_ifindex") {
           llvm::errs() << "Instruction writing to ingress_ifindex ";
           i->dump();
           secondOperand->dump();
         }
-        state.addWrite("struct.xdp_md." + secondOperand->getName().str());
+        state.addWrite(formatName(secondOperand->getName().str()));
+        // state.addWrite("struct.xdp_md." + secondOperand->getName().str());
       }
 
       if (state.isReferenceToArg(firstOperand)) {
         state.addReferenceToArg(secondOperand);
         // state.printReferences();
-        if (firstOperand->getName().str() != "") {
-          state.addRead("struct.xdp_md." + firstOperand->getName().str());
+        if (firstOperand->getName().str() != "" 
+            && !state.isAddressValue(firstOperand) 
+            && isNotTempVar(firstOperand->getName().str())) {
+          state.addRead(formatName(firstOperand->getName().str()));
+          // state.addRead("struct.xdp_md." + firstOperand->getName().str());
         }
       }
 
@@ -4713,16 +4811,40 @@ void Executor::executeMemoryOperation(ExecutionState &state,
     // add to read set
     if (i->getNumOperands() > 0
         && i->getOpcode() == 32   // Load instruction
-        && std::find(removedNames.begin(), removedNames.end(), i->getOperand(0)->getName().str()) == removedNames.end()
-        && std::find(removedFunctions.begin(), removedFunctions.end(), i->getFunction()->getName().str()) == removedFunctions.end()) {
+        && state.isValueForAnalysis(i->getOperand(0))
+        && state.isFunctionForAnalysis(i->getFunction())) {
       Value *firstOperand = i->getOperand(0);
+
+
+      if (state.isInlinedFunctionVar(firstOperand)) {
+        llvm::errs() << "*** Inlined function as load operand\n";
+        std::string opName = firstOperand->getName().str();
+        std::string::size_type pos = opName.find(':');
+        if (pos == std::string::npos) {
+          i->dump();
+          firstOperand->dump();
+          llvm::errs() << "------ Error! for name " << opName;
+          exit(1);
+        }
+        assert(pos != std::string::npos && "Error: invalid format for inlined function variable name");
+        std::string scope = opName.substr(0, pos);
+        std::string originalName = i->hasName() ? i->getName().str() : state.getNextRegNameAndIncrement();
+        std::string finalName = scope + ":" + originalName;
+        llvm::errs() << "Updated name of load to " << finalName << "\n";
+        llvm::Twine newName = finalName;
+        i->setName(newName);
+      }
 
       if (state.isReferenceToArg(firstOperand)) {
         state.addReferenceToArg(i);
-        if (!state.isArgContent(firstOperand)) {
-          state.addRead("struct.xdp_md." + firstOperand->getName().str());
+        if (!state.isArgContent(firstOperand) 
+            && !state.isAddressValue(firstOperand) 
+            && isNotTempVar(firstOperand->getName().str())) {
+          state.addRead(formatName(firstOperand->getName().str()));
+          // state.addRead("struct.xdp_md." + firstOperand->getName().str());
         }
       }
+      
     }
     
   }

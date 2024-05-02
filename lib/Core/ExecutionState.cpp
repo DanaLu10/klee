@@ -27,6 +27,8 @@
 #include <iomanip>
 #include <map>
 #include <set>
+#include <string>
+#include <regex>
 #include <sstream>
 #include <stdarg.h>
 
@@ -168,6 +170,75 @@ bool ExecutionState::isArgContent(llvm::Value *val) {
 
 void ExecutionState::addWrite(std::string newWrite) {
   writeSet.insert(newWrite);
+}
+
+std::string ExecutionState::getNextRegNameAndIncrement() {
+  std::string value = std::to_string(nextRegName);
+  nextRegName++;
+  return value;
+}
+
+bool ExecutionState::isFunctionForAnalysis(llvm::Function *func) {
+  std::vector<std::string> removedFunctions = {"__uClibc_main", "__uClibc_init", "__uClibc_fini", "__user_main",
+    "exit", "map_allocate", "map_lookup_elem", "map_update_elem", "map_delete_elem", 
+    "map_of_map_allocate", "map_of_map_lookup_elem", "bpf_map_init_stub"  ,
+    "bpf_map_lookup_elem", "bpf_map_reset_stub", "array_allocate", "bpf_map_update_elem",
+    "array_update_elem", "bpf_redirect_map", "map_update_elem", "array_lookup_elem", ""};
+  std::string funcName = func->getName().str();
+
+  // not present in the removed functions
+  return std::find(removedFunctions.begin(), removedFunctions.end(), funcName) == removedFunctions.end();
+}
+
+bool ExecutionState::isAddressValue(llvm::Value *val) {
+  // DANATODO: This is very crude, and only a temp fix that still has bugs
+  // It could happen that there is a member of a struct named addr
+  std::string valName = val->getName().str();
+  std::string addressVars = ".addr";
+
+  return valName.find(addressVars) != std::string::npos;
+}
+
+bool ExecutionState::isValueForAnalysis(llvm::Value *val) {
+  std::vector<std::string> removedNames{"", "retval", "argc.addr", "argv.addr"};
+  std::string valName = val->getName().str();
+  std::string addressVars = ".addr";
+
+  const std::regex tempVarRegex("((.)+\\.[0-9]+)");
+
+  if (valName.find("retval") != std::string::npos) {
+    return false;
+  }
+
+  if (std::regex_match(valName, tempVarRegex)) {
+    llvm::errs() << "Regex matched on " << valName << "\n";
+    return false;
+  }
+
+  return std::find(removedNames.begin(), removedNames.end(), valName) == removedNames.end();
+} 
+
+void ExecutionState::addInlinedFunctionVar(llvm::Value *val) {
+  inlinedFunctionVars.insert(val);
+}
+
+// void ExecutionState::isAlready
+
+bool ExecutionState::isInlinedFunctionVar(llvm::Value *val) {
+  // returns if the value is an inlined function variable
+  // std::string inlineFuncVarEnding = ".i";
+  std::string name = val->getName().str();
+  const std::regex inlineFuncVarRegex("((.)+\\.i[0-9]*)");
+
+  return (std::regex_match(name, inlineFuncVarRegex));
+    
+  //   llvm::errs() << "Regex matched on " << name << "\n";
+  // }
+
+  // return (inlineFuncVarEnding.length() < name.length())
+      // && (0 == name.compare(name.length() - inlineFuncVarEnding.length(), inlineFuncVarEnding.length(), inlineFuncVarEnding));
+  //   val->getDebugLoc()->dump();
+  //   return true;
 }
 
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {

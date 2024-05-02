@@ -217,6 +217,10 @@ private:
 
   void run(ExecutionState &initialState);
 
+  void updateInlineName(ExecutionState &state, llvm::Instruction *instr, int pos);
+  std::string formatName(std::string name);
+  bool isNotTempVar(std::string varName);
+
   // Given a concrete object in our [klee's] address space, add it to 
   // objects checked code can reference.
   MemoryObject *addExternalObject(ExecutionState &state, void *addr, 

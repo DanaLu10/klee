@@ -23,6 +23,10 @@
 #include "klee/Solver/Solver.h"
 #include "klee/System/Time.h"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include <unordered_set>
 
 #include <map>
@@ -269,6 +273,11 @@ public:
   /// @brief Set of values which are part of the references to the arguments of a function
   std::unordered_set<llvm::Value*> argContents;
 
+  /// @brief Set of values which are used in inlined functions
+  std::unordered_set<llvm::Value*> inlinedFunctionVars;
+
+  int nextRegName = 0;
+
 public:
 #ifdef KLEE_UNITTEST
   // provide this function only in the context of unittests
@@ -296,6 +305,15 @@ public:
 
   void addArgContent(llvm::Value *val);
   bool isArgContent(llvm::Value *val);
+
+  std::string getNextRegNameAndIncrement();
+
+  bool isFunctionForAnalysis(llvm::Function *func);
+  bool isValueForAnalysis(llvm::Value *val);
+  bool isAddressValue(llvm::Value *val);
+
+  void addInlinedFunctionVar(llvm::Value *val);
+  bool isInlinedFunctionVar(llvm::Value *val);
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
