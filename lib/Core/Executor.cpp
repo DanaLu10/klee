@@ -4633,11 +4633,17 @@ std::string Executor::getNameOfGEPSourceStruct(Value *i) {
   return "";
 }
 
-std::string Executor::formatPacketOffsetName(ref<Expr> byteOffset) {
+std::vector<std::string> Executor::formatPacketOffsetName(ref<Expr> byteOffset, unsigned bytes) {
   ConstantExpr *offsetCe = dyn_cast<ConstantExpr>(byteOffset);
   std::string offsetStr;
-  offsetCe->toString(offsetStr, 10);
-  return "b" + offsetStr;
+  std::vector<std::string> valueStrs; 
+  uint64_t val = offsetCe->getZExtValue();
+
+  for (unsigned i = 0; i < bytes; i++) {
+    valueStrs.push_back("b" + std::to_string(val + i));
+  }
+
+  return valueStrs;
 }
 
 void Executor::executeMemoryOperation(ExecutionState &state,
@@ -4797,7 +4803,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
               llvm::errs() << "Write to offset ";
               offset->dump();
               llvm::errs() << "-----\n";
-              state.addWrite(formatPacketOffsetName(offset));
+              for (std::string accessedStr : formatPacketOffsetName(offset, bytes)) {
+                state.addWrite(accessedStr);
+              }
             }
 
             // DANATODO: temp fix, don't rely on name!
@@ -4835,9 +4843,10 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             llvm::errs() << "Result is ";
             result->dump();
             llvm::errs() << "-----\n";
-            state.addRead(formatPacketOffsetName(offset));
+            for (std::string accessedStr : formatPacketOffsetName(offset, bytes)) {
+              state.addRead(accessedStr);
+            }
           }
-
           bindLocal(target, state, result);
         }
 

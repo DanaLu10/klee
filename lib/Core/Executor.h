@@ -214,7 +214,7 @@ private:
   std::string getNameOfGEPSourceStruct(llvm::Value *i);
 
   // Return the formatted byte offset string to be added to the read and write sets
-  std::string formatPacketOffsetName(ref<Expr> byteOffset);
+  std::vector<std::string> formatPacketOffsetName(ref<Expr> byteOffset, unsigned bytes);
 
   /// Return the typeid corresponding to a certain `type_info`
   ref<ConstantExpr> getEhTypeidFor(ref<Expr> type_info);
