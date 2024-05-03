@@ -2982,11 +2982,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
         && getElemPtr->getSourceElementType()->isStructTy()) {
       llvm::StructType *structType = cast<llvm::StructType>(getElemPtr->getSourceElementType());
       std::string structName = structType->getName().str(); 
-      if (structName == "struct.xdp_md") {
-        state.addArgContent(i);
-      } 
-
-      if (state.isArgContent(getElemPtr->getOperand(0))) {
+      if (structName == "struct.xdp_md" || state.isArgContent(getElemPtr->getOperand(0))) {
         state.addArgContent(i);
       }
     }
@@ -4664,13 +4660,13 @@ void Executor::executeMemoryOperation(ExecutionState &state,
       Value *firstOperand = i->getOperand(0);
       Value *secondOperand = i->getOperand(1);
 
-      if (state.isReferenceToArg(firstOperand)) {
-        state.addReferenceToArg(secondOperand);
-      }
+      // if (state.isReferenceToArg(firstOperand)) {
+      //   state.addReferenceToArg(secondOperand);
+      // }
 
-      if (state.isArgContent(firstOperand) || secondOperand->getName().str() == "data") {
-        state.addArgContent(secondOperand);
-      }
+      // if (state.isArgContent(firstOperand) || secondOperand->getName().str() == "data") {
+      //   state.addArgContent(secondOperand);
+      // }
 
       for (llvm::Argument *arg = i->getFunction()->arg_begin(); arg != i->getFunction()->arg_end(); arg++) {
         std::string argName = arg->getName().str();
@@ -4686,29 +4682,23 @@ void Executor::executeMemoryOperation(ExecutionState &state,
         }
       }
     }
-  } else {
+  // } else {
     // add to read set
-    if (i->getNumOperands() > 0
-        && i->getOpcode() == 32   // Load instruction
-        && state.isValueForAnalysis(i->getOperand(0))
-        && state.isFunctionForAnalysis(i->getFunction())) {
-      Value *firstOperand = i->getOperand(0);
+    // if (i->getNumOperands() > 0
+    //     && i->getOpcode() == 32   // Load instruction
+    //     && state.isValueForAnalysis(i->getOperand(0))
+    //     && state.isFunctionForAnalysis(i->getFunction())) {
+      // Value *firstOperand = i->getOperand(0);
 
-      if (state.isReferenceToArg(firstOperand)) {
-        state.addReferenceToArg(i);
-        // if (!state.isArgContent(firstOperand)) {
-        //   state.addRead("struct.xdp_md." + firstOperand->getName().str());
-        // }
-      }
+      // if (state.isReferenceToArg(firstOperand)) {
+      //   state.addReferenceToArg(i);
+      // }
 
-      if (state.isArgContent(firstOperand)) {
-        state.addArgContent(i);
-        if (firstOperand->getName().str() == "protocol") {
-          llvm::errs() << "################### Got arg content for protocol!";
-        }
-      }
+      // if (state.isArgContent(firstOperand)) {
+      //   state.addArgContent(i);
+      // }
 
-    }
+    // }
     
   }
 
@@ -4808,6 +4798,14 @@ void Executor::executeMemoryOperation(ExecutionState &state,
               }
             }
 
+            if (state.isReferenceToArg(firstOperand)) {
+              state.addReferenceToArg(secondOperand);
+            }
+
+            if (state.isArgContent(firstOperand) || secondOperand->getName().str() == "data") {
+              state.addArgContent(secondOperand);
+            }
+
             // DANATODO: temp fix, don't rely on name!
             if (secondOperand->getName().str() == "data") {
               llvm::errs() << "Setting base packet location to value ";
@@ -4846,6 +4844,14 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             for (std::string accessedStr : formatPacketOffsetName(offset, bytes)) {
               state.addRead(accessedStr);
             }
+          }
+
+          if (state.isReferenceToArg(firstOperand)) {
+            state.addReferenceToArg(i);
+          }
+
+          if (state.isArgContent(firstOperand)) {
+            state.addArgContent(i);
           }
           bindLocal(target, state, result);
         }
