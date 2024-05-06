@@ -2729,11 +2729,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
     bindLocal(ki, state, AddExpr::create(left, right));
-
-    // if (state.isReferenceToArg(i->getOperand(0)) 
-    //     || state.isReferenceToArg(i->getOperand(1))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
 
@@ -2741,11 +2736,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
     bindLocal(ki, state, SubExpr::create(left, right));
-
-    // if (state.isReferenceToArg(i->getOperand(0)) 
-    //     || state.isReferenceToArg(i->getOperand(1))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
  
@@ -2753,11 +2743,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> left = eval(ki, 0, state).value;
     ref<Expr> right = eval(ki, 1, state).value;
     bindLocal(ki, state, MulExpr::create(left, right));
-
-    // if (state.isReferenceToArg(i->getOperand(0)) 
-    //     || state.isReferenceToArg(i->getOperand(1))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
 
@@ -2798,11 +2783,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> right = eval(ki, 1, state).value;
     ref<Expr> result = AndExpr::create(left, right);
     bindLocal(ki, state, result);
-
-    // if (state.isReferenceToArg(i->getOperand(0)) 
-    //     || state.isReferenceToArg(i->getOperand(1))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
 
@@ -2811,11 +2791,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> right = eval(ki, 1, state).value;
     ref<Expr> result = OrExpr::create(left, right);
     bindLocal(ki, state, result);
-
-    // if (state.isReferenceToArg(i->getOperand(0)) 
-    //     || state.isReferenceToArg(i->getOperand(1))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
 
@@ -2824,11 +2799,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> right = eval(ki, 1, state).value;
     ref<Expr> result = XorExpr::create(left, right);
     bindLocal(ki, state, result);
-
-    // if (state.isReferenceToArg(i->getOperand(0)) 
-    //     || state.isReferenceToArg(i->getOperand(1))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
 
@@ -2981,20 +2951,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> base = eval(ki, 0, state).value;
     ref<Expr> original_base = base;
 
-    // if (state.isReferenceToArg(i->getOperand(0))) {
-    //   state.addReferenceToArg(i);
-    // }
-
-    // llvm::GetElementPtrInst *getElemPtr = cast<llvm::GetElementPtrInst>(i);
-    // if (getElemPtr->isInBounds() 
-    //     && getElemPtr->getSourceElementType()->isStructTy()) {
-    //   llvm::StructType *structType = cast<llvm::StructType>(getElemPtr->getSourceElementType());
-    //   std::string structName = structType->getName().str(); 
-    //   if (structName == "struct.xdp_md" || state.isArgContent(getElemPtr->getOperand(0))) {
-    //     state.addArgContent(i);
-    //   }
-    // }
-
     for (std::vector< std::pair<unsigned, uint64_t> >::iterator 
            it = kgepi->indices.begin(), ie = kgepi->indices.end(); 
          it != ie; ++it) {
@@ -3058,10 +3014,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
                                            0,
                                            getWidthForLLVMType(ci->getType()));
     bindLocal(ki, state, result);
-
-    // if (state.isReferenceToArg(i->getOperand(0))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
   case Instruction::ZExt: {
@@ -3069,10 +3021,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> result = ZExtExpr::create(eval(ki, 0, state).value,
                                         getWidthForLLVMType(ci->getType()));
     bindLocal(ki, state, result);
-
-    // if (state.isReferenceToArg(i->getOperand(0))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
   case Instruction::SExt: {
@@ -3080,10 +3028,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> result = SExtExpr::create(eval(ki, 0, state).value,
                                         getWidthForLLVMType(ci->getType()));
     bindLocal(ki, state, result);
-    
-    // if (state.isReferenceToArg(i->getOperand(0))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
 
@@ -3092,10 +3036,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     Expr::Width pType = getWidthForLLVMType(ci->getType());
     ref<Expr> arg = eval(ki, 0, state).value;
     bindLocal(ki, state, ZExtExpr::create(arg, pType));
-
-    // if (state.isReferenceToArg(i->getOperand(0))) {
-    //   state.addReferenceToArg(i);
-    // }
     break;
   }
   case Instruction::PtrToInt: {
@@ -3109,14 +3049,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::BitCast: {
     ref<Expr> result = eval(ki, 0, state).value;
     bindLocal(ki, state, result);
-
-    // if (state.isReferenceToArg(i->getOperand(0))) {
-    //   state.addReferenceToArg(i);
-    // }
-
-    // if (state.isArgContent(i->getOperand(0))) {
-    //   state.addArgContent(i);
-    // }
     break;
   }
 
@@ -4666,61 +4598,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                       ref<Expr> address,
                                       ref<Expr> value /* undef if read */,
                                       KInstruction *target /* undef if write */) {
-  Instruction *i = state.prevPC->inst;
-  if (isWrite) {
-    // add to write set
-    // if (i->getNumOperands() > 1 
-    //     && i->getOpcode() == 33   // Store instruction
-    //     && state.isValueForAnalysis(i->getOperand(1))
-    //     && state.isFunctionForAnalysis(i->getFunction())) {
-    //   // store <type> <value>, <type*> <location>
-    //   // <value> is the first operand, the value to be stored 
-    //   // <location> is second operand, the location at which to store the value
-    //   Value *firstOperand = i->getOperand(0);
-    //   Value *secondOperand = i->getOperand(1);
-
-    //   // if (state.isReferenceToArg(firstOperand)) {
-    //   //   state.addReferenceToArg(secondOperand);
-    //   // }
-
-    //   // if (state.isArgContent(firstOperand) || secondOperand->getName().str() == "data") {
-    //   //   state.addArgContent(secondOperand);
-    //   // }
-
-    //   for (llvm::Argument *arg = i->getFunction()->arg_begin(); arg != i->getFunction()->arg_end(); arg++) {
-    //     std::string argName = arg->getName().str();
-    //     if (firstOperand->getName().str() == argName
-    //         && firstOperand->getType()->isPointerTy() 
-    //         && firstOperand->getType()->getPointerElementType()->isStructTy()) {
-    //       llvm::StructType *structTy = cast<llvm::StructType>(firstOperand->getType()->getPointerElementType());  
-    //       if (structTy->getName().str() == "struct.xdp_md") {
-    //         // this stores argument.
-    //         state.addReferenceToArg(secondOperand);
-    //         state.addArgContent(secondOperand);
-    //       }
-    //     }
-    //   }
-    // }
-  // } else {
-    // add to read set
-    // if (i->getNumOperands() > 0
-    //     && i->getOpcode() == 32   // Load instruction
-    //     && state.isValueForAnalysis(i->getOperand(0))
-    //     && state.isFunctionForAnalysis(i->getFunction())) {
-      // Value *firstOperand = i->getOperand(0);
-
-      // if (state.isReferenceToArg(firstOperand)) {
-      //   state.addReferenceToArg(i);
-      // }
-
-      // if (state.isArgContent(firstOperand)) {
-      //   state.addArgContent(i);
-      // }
-
-    // }
-    
-  }
-
   Expr::Width type = (isWrite ? value->getWidth() : 
                      getWidthForLLVMType(target->inst->getType()));
   unsigned bytes = Expr::getMinBytesForWidth(type);
@@ -4803,7 +4680,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                          StateTerminationType::ReadOnly);
           } else {
             Instruction *i = state.prevPC->inst;
-            llvm::Value *firstOperand = i->getOperand(0);
             llvm::Value *secondOperand = i->getOperand(1);
 
             if (llvm::GetElementPtrInst *gep = dyn_cast<llvm::GetElementPtrInst>(secondOperand)) {
@@ -4826,7 +4702,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
               }
             }
 
-            // if (state.isReferenceToArg(secondOperand) && !firstOperand->getType()->isPointerTy()) {
             if (state.getXDPMemoryObjectID() == mo->id) {
               llvm::errs() << "---- Instruction ";
               i->dump();
@@ -4841,34 +4716,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                 state.addWrite(accessedStr);
               }
             }
-            
-            // DANATODO: Think about if this needs to be 
-            // if (state.isReferenceToArg(firstOperand)) {
-            //   state.addReferenceToArg(secondOperand);
-            //   if (isa<llvm::GetElementPtrInst>(secondOperand)) {
-            //     llvm::errs() << "Special case to handle\n";
-            //     i->dump();
-            //     llvm::GetElementPtrInst *getElemPtr = cast<llvm::GetElementPtrInst>(secondOperand);
-            //     state.addReferenceToArg(getElemPtr->getOperand(0));
-            //   }
-            // }
-
-            // if (state.isArgContent(firstOperand) || secondOperand->getName().str() == "data") {
-            //   state.addArgContent(secondOperand);
-            // }
-
-            // DANATODO: temp fix, don't rely on name!
-            // if (secondOperand->getName().str() == "data") {
-            //   llvm::errs() << "Setting base packet location to value ";
-            //   value->dump();
-            //   state.setPacketBaseAddr(value);
-            // }
-
-            // if (secondOperand->getName().str() == "data_end") {
-            //   llvm::errs() << "Setting end packet location to value ";
-            //   value->dump();
-            //   state.setPacketEndAddr(value);
-            // }
 
             ObjectState *wos = state.addressSpace.getWriteable(mo, os);
             wos->write(offset, value);
@@ -4880,16 +4727,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             result = replaceReadWithSymbolic(state, result);
           
           llvm::LoadInst *i = cast<llvm::LoadInst>(state.prevPC->inst);
-          llvm::Value *firstOperand = i->getOperand(0);
-          // if (firstOperand->getName().str() == "protocol.i" || firstOperand->getName().str() == "doff.i" || firstOperand->getName().str() == "h_proto6.i") {
-          //   llvm::errs() << "---------case for " << firstOperand->getName().str() << "-------\n";
-          //   os->print();
-          // }
-          // if (state.isReferenceToArg(firstOperand)
-          //     && i->getPointerOperandType()->isPointerTy()
-          //     && !i->getPointerOperandType()->getPointerElementType()->isPointerTy()
-          //     && isa<GetElementPtrInst>(firstOperand)
-          //     && getNameOfGEPSourceStruct(firstOperand) != "struct.xdp_md") {
           if (state.getXDPMemoryObjectID() != 0 && state.getXDPMemoryObjectID() == mo->id) {
             llvm::errs() << "---- Instruction ";
             i->dump();
@@ -4905,13 +4742,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             }
           }
 
-          // if (state.isReferenceToArg(firstOperand)) {
-          //   state.addReferenceToArg(i);
-          // }
-
-          // if (state.isArgContent(firstOperand)) {
-          //   state.addArgContent(i);
-          // }
           bindLocal(target, state, result);
         }
 
