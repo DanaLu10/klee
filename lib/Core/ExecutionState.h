@@ -276,6 +276,8 @@ public:
   /// @brief Set of values which are used in inlined functions
   std::unordered_set<llvm::Value*> inlinedFunctionVars;
 
+  unsigned int xdpMoId;
+
   int nextRegName = 0;
 
   ref<Expr> packetBaseAddr;
@@ -319,6 +321,9 @@ public:
   ref<Expr> getPacketBaseAddr();
   void setPacketEndAddr(ref<Expr> end);
   ref<Expr> getPacketEndAddr();
+
+  void setXDPMemoryObjectID(unsigned int id);
+  unsigned int getXDPMemoryObjectID();
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();

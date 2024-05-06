@@ -181,7 +181,7 @@ std::string ExecutionState::getNextRegNameAndIncrement() {
 bool ExecutionState::isFunctionForAnalysis(llvm::Function *func) {
   std::vector<std::string> removedFunctions = {"__uClibc_main", "__uClibc_init", "__uClibc_fini", "__user_main",
     "exit", "map_allocate", "map_lookup_elem", "map_update_elem", "map_delete_elem", 
-    "map_of_map_allocate", "map_of_map_lookup_elem", "bpf_map_init_stub"  ,
+    "map_of_map_allocate", "map_of_map_lookup_elem", "bpf_map_init_stub", "bpf_xdp_adjust_head",
     "bpf_map_lookup_elem", "bpf_map_reset_stub", "array_allocate", "bpf_map_update_elem",
     "array_update_elem", "bpf_redirect_map", "map_update_elem", "array_lookup_elem", ""};
   std::string funcName = func->getName().str();
@@ -232,6 +232,14 @@ void ExecutionState::setPacketEndAddr(ref<Expr> end) {
 
 ref<Expr> ExecutionState::getPacketEndAddr() {
   return packetEndAddr;
+}
+
+void ExecutionState::setXDPMemoryObjectID(unsigned int id) {
+  xdpMoId = id;
+}
+
+unsigned int ExecutionState::getXDPMemoryObjectID() {
+  return xdpMoId;
 }
 
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
