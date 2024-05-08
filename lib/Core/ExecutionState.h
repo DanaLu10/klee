@@ -276,6 +276,15 @@ public:
   /// @brief Set of values which are used in inlined functions
   std::unordered_set<llvm::Value*> inlinedFunctionVars;
 
+  /// @brief Mapping from map helper function call to uses of the return value of function call
+  std::map<llvm::Value*, std::unordered_set<const llvm::Value*>> referencesToMapReturn;
+
+  /// @brief Mapping from calls to map helper functions to a string representation
+  std::map<llvm::Value*, std::string> mapCallStrings;
+
+  /// @brief Set of calls to map helper functions which result in a branch
+  std::unordered_set<llvm::Value*> branchesOnMapReturnReference;
+
   unsigned int xdpMoId;
 
   int nextRegName = 0;
@@ -324,6 +333,18 @@ public:
 
   void setXDPMemoryObjectID(unsigned int id);
   unsigned int getXDPMemoryObjectID();
+
+  bool isReferencetoMapReturn(llvm::Value *val);
+  void createNewMapReturn(llvm::Value *val);
+  // If op is in any of the sets of values that reference a return value of a map helper
+  // function call, add val into those sets
+  bool addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val);
+
+  void addMapString(llvm::Value *val, std::string fName, std::string mapName);
+
+  void addBranchOnMapReturn(llvm::Value *val);
+  std::string formatBranchMaps();
+  std::vector<llvm::Value*> findReferenceToMapReturn(llvm::Value *val);
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();

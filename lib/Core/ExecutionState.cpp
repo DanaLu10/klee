@@ -22,6 +22,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Instructions.h"
 
 #include <cassert>
 #include <iomanip>
@@ -240,6 +241,79 @@ void ExecutionState::setXDPMemoryObjectID(unsigned int id) {
 
 unsigned int ExecutionState::getXDPMemoryObjectID() {
   return xdpMoId;
+}
+
+bool ExecutionState::isReferencetoMapReturn(llvm::Value *val) {
+  for (const auto &c : referencesToMapReturn) {
+    if (c.second.find(val) != c.second.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::vector<llvm::Value*> ExecutionState::findReferenceToMapReturn(llvm::Value *val) {
+  std::vector<llvm::Value*> mapReturns;
+  for (const auto &c : referencesToMapReturn) {
+    if (c.second.find(val) != c.second.end()) {
+      mapReturns.push_back(c.first);
+    }
+  }
+  return mapReturns;
+}
+
+void ExecutionState::createNewMapReturn(llvm::Value *val) {
+  std::unordered_set<const llvm::Value*> newSet;
+  referencesToMapReturn.insert(std::make_pair(val, newSet));
+  llvm::errs() << "Created new entry for instruction ";
+  val->dump();
+}
+
+void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName) {
+  std::string mapStr = "Called " + fName + " on map " + mapName;
+  mapCallStrings.insert(std::make_pair(val, mapStr));
+}
+
+bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val) {
+  bool added = false;
+  if (isa<llvm::CallInst>(op) && referencesToMapReturn.find(op) != referencesToMapReturn.end()) {
+    referencesToMapReturn[op].insert(val);
+    llvm::errs() << "---inserted value ";
+    val->dump();
+    return true;
+  }
+  for (auto &c : referencesToMapReturn) {
+    if (c.second.find(op) != c.second.end()) {
+      c.second.insert(val);
+      llvm::errs() << "---inserted value ";
+      val->dump();
+      added = true;
+    }
+  }
+  return added;
+}
+
+void ExecutionState::addBranchOnMapReturn(llvm::Value *val) {
+  branchesOnMapReturnReference.insert(val);
+}
+
+std::string ExecutionState::formatBranchMaps() {
+  std::string maps;
+
+  for (auto &branch : branchesOnMapReturnReference) {
+    for (auto &c: findReferenceToMapReturn(branch)) {
+      llvm::errs() << "Reference to ";
+      c->dump();
+      std::string mapStr = "Unknown map and function\n";
+      auto it = mapCallStrings.find(c);
+      if (it != mapCallStrings.end()) {
+        mapStr = it->second + "\n";
+      }
+      maps += mapStr;
+    }
+  }
+
+  return maps;
 }
 
 void ExecutionState::pushFrame(KInstIterator caller, KFunction *kf) {
