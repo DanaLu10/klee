@@ -1723,7 +1723,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
 
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
       mapName = "map:" + bitcastMap->getOperand(0)->getName().str();
-      state.addMapString(i, fName, bitcastMap->getOperand(0)->getName().str());
+      state.addMapString(i, fName, bitcastMap->getOperand(0)->getName().str(), ki->info);
       // Obtain original size of key before bitcast into void pointer
       if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
         llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
@@ -1846,7 +1846,6 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       state.addWrite(mapName + "." + keyName);
     }
   } else if (fName == "bpf_xdp_adjust_head") {
-    // DANATODO: handle this case
     // Instruction *i = ki->inst;
     llvm::errs() << "Called bpf_xdp_adjust_head, read write set functionality not implemented yet\n";
     // Value *size = i->getOperand(1);
@@ -2368,7 +2367,7 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   case Instruction::Br: {
     BranchInst *bi = cast<BranchInst>(i);
     if (state.addIfReferencetoMapReturn(bi->getOperand(0), bi)) {
-      state.addBranchOnMapReturn(bi);
+      state.addBranchOnMapReturn(bi, ki->info);
     }
     if (bi->isUnconditional()) {
       transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), state);

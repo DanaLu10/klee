@@ -283,7 +283,7 @@ public:
   std::map<llvm::Value*, std::string> mapCallStrings;
 
   /// @brief Set of calls to map helper functions which result in a branch
-  std::unordered_set<llvm::Value*> branchesOnMapReturnReference;
+  std::set<std::pair<llvm::Value*, std::string>> branchesOnMapReturnReference;
 
   unsigned int xdpMoId;
 
@@ -340,9 +340,9 @@ public:
   // function call, add val into those sets
   bool addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val);
 
-  void addMapString(llvm::Value *val, std::string fName, std::string mapName);
+  void addMapString(llvm::Value *val, std::string fName, std::string mapName, const InstructionInfo *info);
 
-  void addBranchOnMapReturn(llvm::Value *val);
+  void addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info);
   std::string formatBranchMaps();
   std::vector<llvm::Value*> findReferenceToMapReturn(llvm::Value *val);
 

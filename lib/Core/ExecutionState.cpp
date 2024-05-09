@@ -269,8 +269,8 @@ void ExecutionState::createNewMapReturn(llvm::Value *val) {
   val->dump();
 }
 
-void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName) {
-  std::string mapStr = "Called " + fName + " on map " + mapName;
+void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName, const InstructionInfo *info) {
+  std::string mapStr = "Called " + fName + " on map " + mapName + ", source line " + std::to_string(info->line);
   mapCallStrings.insert(std::make_pair(val, mapStr));
 }
 
@@ -293,21 +293,22 @@ bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val
   return added;
 }
 
-void ExecutionState::addBranchOnMapReturn(llvm::Value *val) {
-  branchesOnMapReturnReference.insert(val);
+void ExecutionState::addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info) {
+  std::string branchInfo = "line: " + std::to_string(info->line) + ", column: " + std::to_string(info->column);
+  branchesOnMapReturnReference.insert(std::make_pair(val, branchInfo));
 }
 
 std::string ExecutionState::formatBranchMaps() {
   std::string maps;
 
   for (auto &branch : branchesOnMapReturnReference) {
-    for (auto &c: findReferenceToMapReturn(branch)) {
+    for (auto &c: findReferenceToMapReturn(branch.first)) {
       llvm::errs() << "Reference to ";
       c->dump();
       std::string mapStr = "Unknown map and function\n";
       auto it = mapCallStrings.find(c);
       if (it != mapCallStrings.end()) {
-        mapStr = it->second + "\n";
+        mapStr = it->second + + ", called on " + branch.second + "\n";
       }
       maps += mapStr;
     }
