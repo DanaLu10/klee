@@ -124,7 +124,10 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     readSet(state.readSet),
     writeSet(state.writeSet),
     referencesToArg(state.referencesToArg),
-    argContents(state.argContents) {
+    argContents(state.argContents),
+    referencesToMapReturn(state.referencesToMapReturn),
+    mapCallStrings(state.mapCallStrings),
+    branchesOnMapReturnReference(state.branchesOnMapReturnReference) {
   for (const auto &cur_mergehandler: openMergeStack)
     cur_mergehandler->addOpenState(this);
 }
@@ -264,6 +267,7 @@ std::vector<llvm::Value*> ExecutionState::findReferenceToMapReturn(llvm::Value *
 
 void ExecutionState::createNewMapReturn(llvm::Value *val) {
   std::unordered_set<const llvm::Value*> newSet;
+  newSet.insert(val);
   referencesToMapReturn.insert(std::make_pair(val, newSet));
   llvm::errs() << "Created new entry for instruction ";
   val->dump();
@@ -274,16 +278,18 @@ void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::stri
   mapCallStrings.insert(std::make_pair(val, mapStr));
 }
 
+void ExecutionState::printReferencesToMapReturnKeys() {
+  llvm::errs() << "References to map return keys: {";
+  for (auto &c : referencesToMapReturn) {
+    c.first->dump();
+  }
+  llvm::errs() << "}\n";
+}
+
 bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val) {
   bool added = false;
-  if (isa<llvm::CallInst>(op) && referencesToMapReturn.find(op) != referencesToMapReturn.end()) {
-    referencesToMapReturn[op].insert(val);
-    llvm::errs() << "---inserted value ";
-    val->dump();
-    return true;
-  }
   for (auto &c : referencesToMapReturn) {
-    if (c.second.find(op) != c.second.end()) {
+    if (c.second.find(op) != c.second.end() || op == c.first) {
       c.second.insert(val);
       llvm::errs() << "---inserted value ";
       val->dump();

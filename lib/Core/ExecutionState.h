@@ -346,6 +346,8 @@ public:
   std::string formatBranchMaps();
   std::vector<llvm::Value*> findReferenceToMapReturn(llvm::Value *val);
 
+  void printReferencesToMapReturnKeys();
+
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();
 

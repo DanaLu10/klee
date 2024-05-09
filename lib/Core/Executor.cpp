@@ -1752,7 +1752,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       state.addressSpace.resolveOne(state, solver.get(), ce, op, success);
       const MemoryObject *mo = op.first;
       const ObjectState *osarg = op.second;
-      assert(osarg && "Error: Resolving not able to find object not handled");
+      assert(osarg && "Error: Resolving not able to find object not handled. Check if function arguments were initialised");
 
       // read the pointer
       ref<Expr> offsetToArg = mo->getOffsetExpr(ce);
@@ -4137,8 +4137,12 @@ void Executor::terminateStateOnError(ExecutionState &state,
       msg << "Info: \n" << info_str;
 
     std::string mapInfo  = state.formatBranchMaps();
-    if (!mapInfo.empty())
+    if (!mapInfo.empty()) {
       msg << "These branches on map values lead to this error: \n" << mapInfo;
+      msg << "Please make sure the maps are configured correctly. \n";
+    } else {
+      msg << "No map info\n";
+    }
 
     const std::string ext = terminationTypeFileExtension(terminationType);
     // use user provided suffix from klee_report_error()
