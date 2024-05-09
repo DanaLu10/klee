@@ -4138,9 +4138,7 @@ void Executor::terminateStateOnError(ExecutionState &state,
 
     std::string mapInfo  = state.formatBranchMaps();
     if (!mapInfo.empty())
-      msg << "Maps accessed: \n" << mapInfo;
-    else 
-      msg << "No map was accessed \n";
+      msg << "These branches on map values lead to this error: \n" << mapInfo;
 
     const std::string ext = terminationTypeFileExtension(terminationType);
     // use user provided suffix from klee_report_error()

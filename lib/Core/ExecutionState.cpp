@@ -270,7 +270,7 @@ void ExecutionState::createNewMapReturn(llvm::Value *val) {
 }
 
 void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName, const InstructionInfo *info) {
-  std::string mapStr = "Called " + fName + " on map " + mapName + ", source line " + std::to_string(info->line);
+  std::string mapStr = fName + " on map " + mapName + " on line: " + std::to_string(info->line) + ", column: " + std::to_string(info->column);
   mapCallStrings.insert(std::make_pair(val, mapStr));
 }
 
@@ -308,7 +308,7 @@ std::string ExecutionState::formatBranchMaps() {
       std::string mapStr = "Unknown map and function\n";
       auto it = mapCallStrings.find(c);
       if (it != mapCallStrings.end()) {
-        mapStr = it->second + + ", called on " + branch.second + "\n";
+        mapStr = "\tBranch on " + branch.second + " used return value from call to " + it->second + "\n";
       }
       maps += mapStr;
     }
