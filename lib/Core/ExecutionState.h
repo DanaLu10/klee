@@ -351,6 +351,7 @@ public:
   // If op is in any of the sets of values that reference a return value of a map helper
   // function call, add val into those sets
   bool addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val);
+  void removeMapReference(llvm::Value *val);
 
   void addMapString(llvm::Value *val, std::string fName, std::string mapName, const InstructionInfo *info);
 

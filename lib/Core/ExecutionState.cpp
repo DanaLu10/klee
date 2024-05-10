@@ -297,6 +297,12 @@ bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val
   return added;
 }
 
+void ExecutionState::removeMapReference(llvm::Value *val) {
+  for (auto &c : referencesToMapReturn) {
+    c.second.erase(val);
+  }
+}
+
 void ExecutionState::addMapCorrelation(std::string sourceMap, std::string dependentMap, 
   // add a map correlation between source map and head map
   std::string sourceFunction, std::string dependentFunction) {

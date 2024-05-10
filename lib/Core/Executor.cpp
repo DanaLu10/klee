@@ -4805,8 +4805,11 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                 state.addWrite(accessedStr);
               }
             }
-            
-            state.addIfReferencetoMapReturn(i->getOperand(0), i->getOperand(1));
+            if (state.isReferencetoMapReturn(i->getOperand(1)) && !state.isReferencetoMapReturn(i->getOperand(0))) {
+              state.removeMapReference(i->getOperand(1));
+            } else {
+              state.addIfReferencetoMapReturn(i->getOperand(0), i->getOperand(1));
+            }
             ObjectState *wos = state.addressSpace.getWriteable(mo, os);
             wos->write(offset, value);
           }
