@@ -255,8 +255,8 @@ bool ExecutionState::isReferencetoMapReturn(llvm::Value *val) {
   return false;
 }
 
-std::vector<llvm::Value*> ExecutionState::findReferenceToMapReturn(llvm::Value *val) {
-  std::vector<llvm::Value*> mapReturns;
+std::vector<llvm::CallBase*> ExecutionState::findReferenceToMapReturn(llvm::Value *val) {
+  std::vector<llvm::CallBase*> mapReturns;
   for (const auto &c : referencesToMapReturn) {
     if (c.second.find(val) != c.second.end()) {
       mapReturns.push_back(c.first);
@@ -265,7 +265,7 @@ std::vector<llvm::Value*> ExecutionState::findReferenceToMapReturn(llvm::Value *
   return mapReturns;
 }
 
-void ExecutionState::createNewMapReturn(llvm::Value *val) {
+void ExecutionState::createNewMapReturn(llvm::CallBase *val) {
   std::unordered_set<const llvm::Value*> newSet;
   newSet.insert(val);
   referencesToMapReturn.insert(std::make_pair(val, newSet));
@@ -291,12 +291,32 @@ bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val
   for (auto &c : referencesToMapReturn) {
     if (c.second.find(op) != c.second.end() || op == c.first) {
       c.second.insert(val);
-      llvm::errs() << "---inserted value ";
-      val->dump();
       added = true;
     }
   }
   return added;
+}
+
+void ExecutionState::addMapCorrelation(std::string sourceMap, std::string dependentMap, 
+  // add a map correlation between source map and head map
+  std::string sourceFunction, std::string dependentFunction) {
+  MapCorrelationInformation newInfo;
+  newInfo.sourceMapFunction = sourceFunction;
+  newInfo.dependentMapFunction = dependentFunction;
+  newInfo.sourceMapName = sourceMap;
+  newInfo.dependentMapName = dependentMap;
+  correlatedMaps.push_back(newInfo);
+}
+
+std::vector<std::string> ExecutionState::formatMapCorrelations() {
+  std::vector<std::string> mapInfo;
+
+  for (auto &c : correlatedMaps) {
+    std::string newInfo = c.sourceMapFunction + "(" + c.sourceMapName + ")->" + c.sourceMapFunction + "(" + c.dependentMapName + ")";
+    mapInfo.push_back(newInfo);
+  }
+
+  return mapInfo;
 }
 
 void ExecutionState::addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info) {

@@ -1717,13 +1717,18 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     std::string mapName = "unk_map";
     unsigned keySize = 32;
     Instruction *i = ki->inst;
-    llvm::errs() << "This instruction ";
-    i->dump();
-    state.createNewMapReturn(i);
+    llvm::CallBase *callB = cast<llvm::CallBase>(i);
+    state.createNewMapReturn(callB);
+
+    // if (state.isReferencetoMapReturn(i->getOperand(1))) {
+    //   llvm::errs() << "Found correlation!! ";
+    //   i->dump();
+    // }
 
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
-      mapName = "map:" + bitcastMap->getOperand(0)->getName().str();
-      state.addMapString(i, fName, bitcastMap->getOperand(0)->getName().str(), ki->info);
+      std::string name = bitcastMap->getOperand(0)->getName().str();
+      mapName = "map:" + name;
+      state.addMapString(i, fName, name, ki->info);
       // Obtain original size of key before bitcast into void pointer
       if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
         llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
@@ -1735,6 +1740,18 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         } else {
           assert(0 && "Error: case for argument of this type not implemented yet.");
         }
+      }
+
+      // If there is a dependency
+      for (auto &sourceCall : state.findReferenceToMapReturn(callB->getOperand(1))) {
+        llvm::errs() << "Found a correlation!! ";
+        sourceCall->dump();
+        Value *fp = sourceCall->getCalledOperand();
+        Function *callF = getTargetFunction(fp);
+        llvm::BitCastOperator *sourceBitcast = cast<llvm::BitCastOperator>(sourceCall->getOperand(0));
+        std::string sourceMapName = sourceBitcast->getOperand(0)->getName().str();
+        state.addMapCorrelation(sourceMapName, name, callF->getName().str(), fName);
+        // state.addMapCorrelation()
       }
     } else {
       // DANATODO: figure out what to do if it is not a bitcast
@@ -1794,11 +1811,14 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         }
         keyName = valueStr;
       } else {
-        llvm::errs() << "Not handled type ";
-        Expr::printKind(llvm::errs(), readValue->getKind());
-        readValue->dump();
-        osarg->print();
-        assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
+        keyName = "sym";
+        // llvm::errs() << "Not handled type ";
+        // Expr::printKind(llvm::errs(), readValue->getKind());
+        // llvm::errs() << "\n";
+        // readValue->dump();
+        // osarg->print();
+        // llvm::errs() << "Has size " << std::to_string(osarg->size) << "\n";
+        // assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
       }
     } else if (fName == "bpf_redirect_map") {
       if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(lookupKey)) {
@@ -3973,6 +3993,7 @@ void Executor::terminateState(ExecutionState &state,
   interpreterHandler->incPathsExplored();
   interpreterHandler->addToReadSet(state.readSet);
   interpreterHandler->addToWriteSet(state.writeSet);
+  interpreterHandler->addToMapCorrelation(state.formatMapCorrelations());
   executionTree->setTerminationType(state, reason);
 
   std::vector<ExecutionState *>::iterator it =

@@ -305,6 +305,12 @@ namespace {
           cl::desc("Generate the write set of the program"),
           cl::cat(FunctionalVerificationCat));
 
+  cl::opt<bool>
+  MapCorrelation("map-correlation",
+          cl::init(false),
+          cl::desc("Generate file with correlations between maps"),
+          cl::cat(FunctionalVerificationCat));
+
 }
 
 namespace klee {
@@ -320,6 +326,7 @@ private:
   TreeStreamWriter *m_pathWriter, *m_symPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
   std::unique_ptr<llvm::raw_ostream> m_verificationFile;
+  std::unique_ptr<llvm::raw_ostream> m_mapCorrelationFile;
 
   SmallString<128> m_outputDirectory;
 
@@ -329,6 +336,7 @@ private:
   unsigned m_pathsExplored; // number of partially explored and completed paths
   std::set<std::string> m_readSet; // write set
   std::set<std::string> m_writeSet; // read set
+  std::vector<std::string> m_mapCorrelation; // Correlations between maps
 
   // used for writing .ktest files
   int m_argc;
@@ -340,12 +348,14 @@ public:
 
   llvm::raw_ostream &getInfoStream() const { return *m_infoFile; }
   llvm::raw_ostream &getVerificationStream() const { return *m_verificationFile; }
+  llvm::raw_ostream &getMapCorrelationStream() const { return *m_mapCorrelationFile; }
   /// Returns the number of test cases successfully generated so far
   unsigned getNumTestCases() { return m_numGeneratedTests; }
   unsigned getNumPathsCompleted() { return m_pathsCompleted; }
   unsigned getNumPathsExplored() { return m_pathsExplored; }
   std::set<std::string> getReadSet() { return m_readSet; }
   std::set<std::string> getWriteSet() { return m_writeSet; }
+  std::vector<std::string> getCorrelatedMaps() { return m_mapCorrelation; }
   void incPathsCompleted() { ++m_pathsCompleted; }
   void incPathsExplored(std::uint32_t num = 1) {
     m_pathsExplored += num; }
@@ -353,6 +363,8 @@ public:
     m_readSet.merge(newSet); }
   void addToWriteSet(std::set<std::string> newSet) {
     m_writeSet.merge(newSet); }
+  void addToMapCorrelation(std::vector<std::string> newInfo) {
+    m_mapCorrelation.insert(m_mapCorrelation.end(), newInfo.begin(), newInfo.end()); }
 
   void setInterpreter(Interpreter *i);
 
@@ -450,8 +462,11 @@ KleeHandler::KleeHandler(int argc, char **argv)
   // open info
   m_infoFile = openOutputFile("info");
 
-  // opern verification file
+  // open verification file
   m_verificationFile = openOutputFile("verification");
+
+  // open map correlation file
+  m_mapCorrelationFile = openOutputFile("mapCorrelation");
 }
 
 KleeHandler::~KleeHandler() {
@@ -1641,6 +1656,15 @@ int main(int argc, char **argv, char **envp) {
       handler->getVerificationStream() << write;
     }
     handler->getVerificationStream() << "}\n";
+  }
+
+  if (MapCorrelation) {
+    handler->getMapCorrelationStream() << "Map Correlations \n";
+    std::vector<std::string> correlatedMaps = handler->getCorrelatedMaps();
+    
+    for (auto const& correlation : correlatedMaps) {
+      handler->getMapCorrelationStream() << correlation << "\n";
+    }
   }
 
   std::stringstream stats;

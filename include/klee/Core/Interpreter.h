@@ -45,6 +45,7 @@ public:
   virtual void incPathsExplored(std::uint32_t num = 1) = 0;
   virtual void addToReadSet(std::set<std::string> newSet) = 0;
   virtual void addToWriteSet(std::set<std::string> newSet) = 0;
+  virtual void addToMapCorrelation(std::vector<std::string> newInfo) = 0;
 
   virtual void processTestCase(const ExecutionState &state,
                                const char *err,

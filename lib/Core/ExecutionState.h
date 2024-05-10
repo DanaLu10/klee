@@ -25,6 +25,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instruction.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include <unordered_set>
@@ -149,6 +150,14 @@ struct CleanupPhaseUnwindingInformation : public UnwindingInformation {
   static bool classof(const UnwindingInformation *u) {
     return u->getKind() == UnwindingInformation::Kind::CleanupPhase;
   }
+};
+
+struct MapCorrelationInformation {
+  std::string sourceMapName;
+  std::string dependentMapName;
+  std::string sourceMapFunction;
+  std::string dependentMapFunction;
+  std::string variable;
 };
 
 /// @brief ExecutionState representing a path under exploration
@@ -277,13 +286,16 @@ public:
   std::unordered_set<llvm::Value*> inlinedFunctionVars;
 
   /// @brief Mapping from map helper function call to uses of the return value of function call
-  std::map<llvm::Value*, std::unordered_set<const llvm::Value*>> referencesToMapReturn;
+  std::map<llvm::CallBase*, std::unordered_set<const llvm::Value*>> referencesToMapReturn;
 
   /// @brief Mapping from calls to map helper functions to a string representation
   std::map<llvm::Value*, std::string> mapCallStrings;
 
   /// @brief Set of calls to map helper functions which result in a branch
   std::set<std::pair<llvm::Value*, std::string>> branchesOnMapReturnReference;
+
+  /// @brief Set of map pairs where there is a correlation from the left map to the right map
+  std::vector<MapCorrelationInformation> correlatedMaps;
 
   unsigned int xdpMoId;
 
@@ -335,7 +347,7 @@ public:
   unsigned int getXDPMemoryObjectID();
 
   bool isReferencetoMapReturn(llvm::Value *val);
-  void createNewMapReturn(llvm::Value *val);
+  void createNewMapReturn(llvm::CallBase *val);
   // If op is in any of the sets of values that reference a return value of a map helper
   // function call, add val into those sets
   bool addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val);
@@ -344,8 +356,11 @@ public:
 
   void addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info);
   std::string formatBranchMaps();
-  std::vector<llvm::Value*> findReferenceToMapReturn(llvm::Value *val);
+  std::vector<llvm::CallBase*> findReferenceToMapReturn(llvm::Value *val);
 
+  void addMapCorrelation(std::string sourceMap, std::string dependentMap, 
+                         std::string sourceFunction, std::string dependentFunction);
+  std::vector<std::string> formatMapCorrelations();
   void printReferencesToMapReturnKeys();
 
   void pushFrame(KInstIterator caller, KFunction *kf);
