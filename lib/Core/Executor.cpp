@@ -1741,17 +1741,22 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
           assert(0 && "Error: case for argument of this type not implemented yet.");
         }
       }
-
+      std::vector<llvm::Value*> mapArgs;
+      mapArgs.push_back(callB->getOperand(1));
+      if (fName == "bpf_map_update_elem") {
+        mapArgs.push_back(callB->getOperand(2));
+      }
       // If there is a dependency
-      for (auto &sourceCall : state.findReferenceToMapReturn(callB->getOperand(1))) {
-        llvm::errs() << "Found a correlation!! ";
-        sourceCall->dump();
-        Value *fp = sourceCall->getCalledOperand();
-        Function *callF = getTargetFunction(fp);
-        llvm::BitCastOperator *sourceBitcast = cast<llvm::BitCastOperator>(sourceCall->getOperand(0));
-        std::string sourceMapName = sourceBitcast->getOperand(0)->getName().str();
-        state.addMapCorrelation(sourceMapName, name, callF->getName().str(), fName);
-        // state.addMapCorrelation()
+      for (auto &arg : mapArgs) {
+        for (auto &sourceCall : state.findReferenceToMapReturn(arg)) {
+          llvm::errs() << "Found a correlation!! ";
+          sourceCall->dump();
+          Value *fp = sourceCall->getCalledOperand();
+          Function *callF = getTargetFunction(fp);
+          llvm::BitCastOperator *sourceBitcast = cast<llvm::BitCastOperator>(sourceCall->getOperand(0));
+          std::string sourceMapName = sourceBitcast->getOperand(0)->getName().str();
+          state.addMapCorrelation(sourceMapName, name, callF->getName().str(), fName);
+        }
       }
     } else {
       // DANATODO: figure out what to do if it is not a bitcast
@@ -4807,6 +4812,13 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             }
             if (state.isReferencetoMapReturn(i->getOperand(1)) && !state.isReferencetoMapReturn(i->getOperand(0))) {
               state.removeMapReference(i->getOperand(1));
+
+              if (LoadInst *loadInst = dyn_cast<LoadInst>(i->getOperand(1))) {
+                if (loadInst->getPointerOperandType()->isPointerTy()
+                    && loadInst->getPointerOperandType()->getPointerElementType()->isPointerTy()) {
+                  state.removeMapReference(loadInst->getOperand(0));
+                }
+              }
             } else {
               state.addIfReferencetoMapReturn(i->getOperand(0), i->getOperand(1));
             }
