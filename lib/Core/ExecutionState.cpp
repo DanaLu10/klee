@@ -325,6 +325,36 @@ std::vector<std::string> ExecutionState::formatMapCorrelations() {
   return mapInfo;
 }
 
+void ExecutionState::addNewMapLookup(llvm::Value *val, std::string repr) {
+  mapLookupString.insert(std::make_pair(val, repr));  
+  std::unordered_set<const llvm::Value*> newSet;
+  newSet.insert(val);
+  mapLookupReturns.insert(std::make_pair(val, newSet));
+  llvm::errs() << "Lookup: Created new entry for instruction ";
+  val->dump();
+}
+
+bool ExecutionState::addIfMapLookupRef(llvm::Value *op, llvm::Value *val) {
+  // mapLookupReturns.insert(val);
+  bool added = false;
+  for (auto &c : mapLookupReturns) {
+    if (c.second.find(op) != c.second.end() || op == c.first) {
+      c.second.insert(val);
+      added = true;
+    }
+  }
+  return added;
+}
+
+std::pair<bool, std::string> ExecutionState::isMapLookupReturn(llvm::Value *val) {
+  for (const auto &c : mapLookupReturns) {
+    if (c.second.find(val) != c.second.end()) {
+      return std::make_pair(true, mapLookupString[c.first]);
+    }
+  }
+  return std::make_pair(false, "");
+}
+
 void ExecutionState::addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info) {
   std::string branchInfo = "line: " + std::to_string(info->line) + ", column: " + std::to_string(info->column);
   branchesOnMapReturnReference.insert(std::make_pair(val, branchInfo));

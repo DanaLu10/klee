@@ -1720,11 +1720,6 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     llvm::CallBase *callB = cast<llvm::CallBase>(i);
     state.createNewMapReturn(callB);
 
-    // if (state.isReferencetoMapReturn(i->getOperand(1))) {
-    //   llvm::errs() << "Found correlation!! ";
-    //   i->dump();
-    // }
-
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
       std::string name = bitcastMap->getOperand(0)->getName().str();
       mapName = "map:" + name;
@@ -1867,6 +1862,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
 
     if (fName == "bpf_map_lookup_elem" || fName == "bpf_redirect_map") {
       state.addRead(mapName + "." + keyName);
+      state.addNewMapLookup(i, mapName + "." + keyName);
     } else if (fName == "bpf_map_update_elem" || fName == "bpf_map_delete_elem") {
       state.addWrite(mapName + "." + keyName);
     }
@@ -3133,7 +3129,10 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     ref<Expr> result = eval(ki, 0, state).value;
     bindLocal(ki, state, result);
     state.addIfReferencetoMapReturn(i->getOperand(0), i);
-
+    state.addIfMapLookupRef(i->getOperand(0), i);
+    // if (state.isMapLookupReturn(i->getOperand(0))) {
+    //   state.addMapLookupRef(i->getOperand(0));
+    // }
     break;
   }
 
@@ -4812,7 +4811,6 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             }
             if (state.isReferencetoMapReturn(i->getOperand(1)) && !state.isReferencetoMapReturn(i->getOperand(0))) {
               state.removeMapReference(i->getOperand(1));
-
               if (LoadInst *loadInst = dyn_cast<LoadInst>(i->getOperand(1))) {
                 if (loadInst->getPointerOperandType()->isPointerTy()
                     && loadInst->getPointerOperandType()->getPointerElementType()->isPointerTy()) {
@@ -4822,6 +4820,14 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             } else {
               state.addIfReferencetoMapReturn(i->getOperand(0), i->getOperand(1));
             }
+
+            std::pair<bool, std::string> mapLookupRet = state.isMapLookupReturn(i->getOperand(1));
+            if (mapLookupRet.first) {
+              state.addWrite(mapLookupRet.second);
+            } else {
+              state.addIfMapLookupRef(i->getOperand(0), i->getOperand(1));
+            }
+
             ObjectState *wos = state.addressSpace.getWriteable(mo, os);
             wos->write(offset, value);
           }
@@ -4847,6 +4853,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             }
           }
           
+          state.addIfMapLookupRef(i->getOperand(0), i);
           state.addIfReferencetoMapReturn(i->getOperand(0), i);
           bindLocal(target, state, result);
         }

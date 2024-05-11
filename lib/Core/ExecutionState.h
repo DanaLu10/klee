@@ -285,6 +285,12 @@ public:
   /// @brief Set of values which are used in inlined functions
   std::unordered_set<llvm::Value*> inlinedFunctionVars;
 
+  /// @brief Mapping from lookup call to string representation of map name with key value
+  std::map<llvm::Value*, std::string> mapLookupString;
+
+  /// @brief Set of values which are references to a location returned by a lookup
+  std::map<llvm::Value*, std::unordered_set<const llvm::Value*>> mapLookupReturns;
+
   /// @brief Mapping from map helper function call to uses of the return value of function call
   std::map<llvm::CallBase*, std::unordered_set<const llvm::Value*>> referencesToMapReturn;
 
@@ -352,6 +358,10 @@ public:
   // function call, add val into those sets
   bool addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val);
   void removeMapReference(llvm::Value *val);
+
+  bool addIfMapLookupRef(llvm::Value *op, llvm::Value *val);
+  void addNewMapLookup(llvm::Value *val, std::string repr);
+  std::pair<bool, std::string> isMapLookupReturn(llvm::Value *val);
 
   void addMapString(llvm::Value *val, std::string fName, std::string mapName, const InstructionInfo *info);
 
