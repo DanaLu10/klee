@@ -160,6 +160,12 @@ struct MapCorrelationInformation {
   std::string variable;
 };
 
+struct MapInfo {
+  std::string mapName;
+  unsigned int mapSize;
+  bool isArrayMap;
+};
+
 /// @brief ExecutionState representing a path under exploration
 class ExecutionState {
 #ifdef KLEE_UNITTEST
@@ -293,9 +299,12 @@ public:
 
   /// @brief Mapping from map helper function call to uses of the return value of function call
   std::map<llvm::CallBase*, std::unordered_set<const llvm::Value*>> referencesToMapReturn;
+  
+  /// @brief Map from the memory object ID of that map to the name of the map and size of the key
+  std::map<unsigned int, MapInfo> mapMemoryObjects;
 
-  /// @brief Mapping from calls to map helper functions to a string representation
-  std::map<llvm::Value*, std::string> mapCallStrings;
+  /// @brief Mapping from calls to map helper functions to a string representation and call key
+  std::map<llvm::Value*, std::pair<std::string, std::string>> mapCallStrings;
 
   /// @brief Set of calls to map helper functions which result in a branch
   std::set<std::pair<llvm::Value*, std::string>> branchesOnMapReturnReference;
@@ -304,6 +313,10 @@ public:
   std::vector<MapCorrelationInformation> correlatedMaps;
 
   unsigned int xdpMoId;
+
+  std::string nextMapName;
+  std::string nextMapKey;
+  unsigned int nextMapSize;
 
   int nextRegName = 0;
 
@@ -363,7 +376,8 @@ public:
   void addNewMapLookup(llvm::Value *val, std::string repr);
   std::pair<bool, std::string> isMapLookupReturn(llvm::Value *val);
 
-  void addMapString(llvm::Value *val, std::string fName, std::string mapName, const InstructionInfo *info);
+  void addMapString(llvm::Value *val, std::string fName, std::string mapName, std::string key, const InstructionInfo *info);
+  std::string getMapCallKey(llvm::Value *val);
 
   void addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info);
   std::string formatBranchMaps();
@@ -373,6 +387,12 @@ public:
                          std::string sourceFunction, std::string dependentFunction);
   std::vector<std::string> formatMapCorrelations();
   void printReferencesToMapReturnKeys();
+
+  void addMapMemoryObjects(std::string name, unsigned int id, unsigned int size, bool isArrayMap);
+
+  MapInfo getMapInfo(unsigned int id);
+  bool isMapMemoryObject(unsigned int id);
+  void printMapMemoryObjects();
 
   void pushFrame(KInstIterator caller, KFunction *kf);
   void popFrame();

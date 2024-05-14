@@ -126,8 +126,12 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     referencesToArg(state.referencesToArg),
     argContents(state.argContents),
     referencesToMapReturn(state.referencesToMapReturn),
+    mapMemoryObjects(state.mapMemoryObjects),
     mapCallStrings(state.mapCallStrings),
-    branchesOnMapReturnReference(state.branchesOnMapReturnReference) {
+    branchesOnMapReturnReference(state.branchesOnMapReturnReference),
+    nextMapName(state.nextMapName),
+    nextMapKey(state.nextMapKey),
+    nextMapSize(state.nextMapSize) {
   for (const auto &cur_mergehandler: openMergeStack)
     cur_mergehandler->addOpenState(this);
 }
@@ -273,9 +277,17 @@ void ExecutionState::createNewMapReturn(llvm::CallBase *val) {
   val->dump();
 }
 
-void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName, const InstructionInfo *info) {
+void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName, std::string key, const InstructionInfo *info) {
   std::string mapStr = fName + " on map " + mapName + " on line: " + std::to_string(info->line) + ", column: " + std::to_string(info->column);
-  mapCallStrings.insert(std::make_pair(val, mapStr));
+  mapCallStrings.insert(std::make_pair(val, std::make_pair(mapStr, key)));
+}
+
+std::string ExecutionState::getMapCallKey(llvm::Value *val) {
+  auto key = mapCallStrings.find(val);
+  if (key != mapCallStrings.end()) {
+    return key->second.second;
+  }
+  return "";
 }
 
 void ExecutionState::printReferencesToMapReturnKeys() {
@@ -360,6 +372,31 @@ void ExecutionState::addBranchOnMapReturn(llvm::Value *val, const InstructionInf
   branchesOnMapReturnReference.insert(std::make_pair(val, branchInfo));
 }
 
+void ExecutionState::addMapMemoryObjects(std::string name, unsigned int id, unsigned int size, bool isArrayMap) {
+  MapInfo mapInfo;
+  mapInfo.isArrayMap = isArrayMap;
+  mapInfo.mapName = name;
+  mapInfo.mapSize = size;
+  mapMemoryObjects.insert(std::make_pair(id, mapInfo));
+}
+
+MapInfo ExecutionState::getMapInfo(unsigned int id) {
+  auto pos = mapMemoryObjects.find(id);
+  return pos->second;
+}
+
+bool ExecutionState::isMapMemoryObject(unsigned int id) {
+  return mapMemoryObjects.find(id) != mapMemoryObjects.end();
+}
+
+void ExecutionState::printMapMemoryObjects() {
+  llvm::errs() << "Map Memory Objects: {";
+  for (auto &c : mapMemoryObjects) {
+    llvm::errs() << "id: " << std::to_string(c.first) << ", name: " << c.second.mapName << ", size: " << std::to_string(c.second.mapSize) << "\n";
+  }
+  llvm::errs() << "}\n";
+}
+
 std::string ExecutionState::formatBranchMaps() {
   std::string maps;
 
@@ -370,7 +407,7 @@ std::string ExecutionState::formatBranchMaps() {
       std::string mapStr = "Unknown map and function\n";
       auto it = mapCallStrings.find(c);
       if (it != mapCallStrings.end()) {
-        mapStr = "\tBranch on " + branch.second + " used return value from call to " + it->second + "\n";
+        mapStr = "\tBranch on " + branch.second + " used return value from call to " + it->second.first + "\n";
       }
       maps += mapStr;
     }

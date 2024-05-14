@@ -1715,15 +1715,15 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       || fName == "bpf_map_delete_elem" || fName == "bpf_redirect_map") {
     std::string keyName = "unk_key";
     std::string mapName = "unk_map";
+    std::string name = "";
     unsigned keySize = 32;
     Instruction *i = ki->inst;
     llvm::CallBase *callB = cast<llvm::CallBase>(i);
     state.createNewMapReturn(callB);
 
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
-      std::string name = bitcastMap->getOperand(0)->getName().str();
+      name = bitcastMap->getOperand(0)->getName().str();
       mapName = "map:" + name;
-      state.addMapString(i, fName, name, ki->info);
       // Obtain original size of key before bitcast into void pointer
       if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
         llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
@@ -1859,23 +1859,10 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       lookupKey->dump();
       assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
     }
-
-    if (fName == "bpf_map_lookup_elem" || fName == "bpf_redirect_map") {
-      state.addRead(mapName + "." + keyName);
-      state.addNewMapLookup(i, mapName + "." + keyName);
-    } else if (fName == "bpf_map_update_elem" || fName == "bpf_map_delete_elem") {
-      state.addWrite(mapName + "." + keyName);
-    }
+    state.nextMapKey = keyName;
+    state.addMapString(i, fName, name, keyName, ki->info);
   } else if (fName == "bpf_xdp_adjust_head") {
-    // Instruction *i = ki->inst;
     llvm::errs() << "Called bpf_xdp_adjust_head, read write set functionality not implemented yet\n";
-    // Value *size = i->getOperand(1);
-    // if (llvm::ConstantInt *sizeCI = dyn_cast<llvm::ConstantInt>(size)) {
-    //   int64_t sizeInt = sizeCI->getSExtValue();
-    // } else {
-    //   assert(0 && "Error: handling of not constant int to bpf_xdp_adjust_head not implemented");
-    // }
-    // llvm::errs() << "------------------------------------------------\n";
   }
 
   Instruction *i = ki->inst;
@@ -4686,6 +4673,206 @@ std::vector<std::string> Executor::formatPacketOffsetName(ExecutionState &state,
   }
 }
 
+void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction *i, ref<Expr> value) {
+  llvm::Value *firstOperand = i->getOperand(0);
+  llvm::Value *secondOperand = i->getOperand(1);
+
+  // DANATODO: may need a better condition
+  if (((i->getFunction()->getName().str() == "map_lookup_elem" || i->getFunction()->getName().str() == "array_lookup_elem")
+      && secondOperand->getName().str() == "retval")
+      || (i->getFunction()->getName().str() == "map_update_elem" && firstOperand->getType()->isPointerTy())) {
+  // if (firstOperand->getType()->isPointerTy()) {
+    ObjectPair lookupOP;
+    bool lookupResolveSuccess;
+    if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
+      const MemoryObject *lookupMO = lookupOP.first;
+      // llvm::errs() << "Map lookup: Successfully resolved pointer to lookup " << lookupMO->id << "\n";
+      if (state.isMapMemoryObject(lookupMO->id)) {
+        llvm::errs() << "Found a read...\n";
+        i->dump();
+        MapInfo mapInfo = state.getMapInfo(lookupMO->id);
+        if (i->getFunction()->getName().str() == "map_update_elem") {
+          state.addWrite("map:" + mapInfo.mapName + "." + state.nextMapKey);
+        } else {
+          state.addRead("map:" + mapInfo.mapName + "." + state.nextMapKey);
+        }
+      }
+    }
+  }
+}
+
+void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<Expr> value) {
+  ObjectPair lookupOP;
+  bool lookupResolveSuccess;
+  std::string fName = i->getFunction()->getName().str();
+  if (fName != "array_allocate" && fName != "array_lookup_elem" 
+      && i->getPointerOperandType()->isPointerTy()
+      && i->getPointerOperandType()->getPointerElementType()->isPointerTy()) {
+    if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
+      const MemoryObject *lookupMO = lookupOP.first;
+      assert(lookupMO);
+      if (state.isMapMemoryObject(lookupMO->id)) {
+        llvm::errs() << "------- Found a read...\n";
+        i->dump();
+        ref<Expr> offset = lookupMO->getOffsetExpr(value);
+        MapInfo mapInfo = state.getMapInfo(lookupMO->id);
+        if (mapInfo.isArrayMap) {
+          std::string keyName = getMapKeyString(offset, mapInfo.mapSize);
+          llvm::errs() << "Offset was " << keyName << "\n";
+          offset->dump();
+          // exit(1);
+          state.addRead("map:" + mapInfo.mapName + "." + keyName);
+        }
+      }
+    }
+  }
+}
+
+void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset) {
+  llvm::Value *secondOperand = i->getOperand(1);
+
+  if (state.isMapMemoryObject(mo->id)) {
+    llvm::errs() << "================ Found a write to map object " << std::to_string(mo->id) << "\n";
+    i->dump();
+    MapInfo mapInfo = state.getMapInfo(mo->id);
+    offset->dump();
+    if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
+      Value *val = state.findReferenceToMapReturn(loadInst->getOperand(0)).back();
+      std::string key = state.getMapCallKey(val);
+      if (key != "") {
+        llvm::errs() << "Found key to call... " << key << "\n";
+        state.addWrite("map:" + mapInfo.mapName + "." + key);
+      }
+    }
+  }
+
+}
+
+std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
+  std::string keyName;
+  if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(key)) {
+    unsigned int val = valueCE->getZExtValue() / size;
+    keyName = std::to_string(val);
+  } else if (CastExpr *castExpr = dyn_cast<CastExpr>(key)) {
+    ref<Expr> kid = castExpr->getKid(0);
+    std::string valueStr;
+    switch(kid->getKind()) {
+      case (Expr::Constant): {
+        ConstantExpr *constantExpr = cast<ConstantExpr>(kid);
+        constantExpr->toString(valueStr, 10);
+        keyName = valueStr;
+        break;
+      }
+      case (Expr::Read): {
+        keyName = "sym";
+        break;
+      }
+      default: {
+        llvm::errs() << "Not handled type of kid ";
+        Expr::printKind(llvm::errs(), kid->getKind());
+        llvm::errs() << "\n";
+        kid->dump();
+        assert(0 && "Error: handling of kid type not implemented");
+        break;
+      }
+    }
+  } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(key)) {
+    // Parts of this read contains symbolic bytes
+    std::string valueStr;
+    int currByte = 0;
+    ref<Expr> currLeft;
+    ConcatExpr *currRight;
+    currRight = valueCE;
+
+    // Iterate over the concatenations
+    do {
+      currLeft = currRight->getLeft();
+      if (ConstantExpr *leftCE = dyn_cast<ConstantExpr>(currLeft)) {
+        std::string currLeftStr;
+        leftCE->toString(currLeftStr, 10);
+        valueStr += ("b" + std::to_string(currByte) + "(" + currLeftStr + ")_");
+      } else {
+        valueStr += ("b" + std::to_string(currByte) + "(sym)_");
+      }
+      currByte++;
+      // currLeft->dump();
+    } while ((currRight->getRight()->getKind() == Expr::Concat) && (currRight = dyn_cast<ConcatExpr>(currRight->getRight())));
+    // while there is more to read
+
+    if (ConstantExpr *lastCE = dyn_cast<ConstantExpr>(currRight->getRight())) {
+      std::string currLeftStr;
+      lastCE->toString(currLeftStr, 10);
+      valueStr += ("b" + std::to_string(currByte) + "(" + currLeftStr + ")_");
+    } else {
+      valueStr += ("b" + std::to_string(currByte) + "(sym)_");
+    }
+    keyName = valueStr;
+  } else {
+    keyName = "sym";
+  }
+  return keyName;
+}
+
+void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Expr> value) {
+  llvm::Value *firstOperand = i->getOperand(0);
+  llvm::Value *secondOperand = i->getOperand(1);
+
+  // Get the memory object of the array map
+  if (isa<GetElementPtrInst>(secondOperand) && isa<CallBase>(firstOperand)) {
+    llvm::GetElementPtrInst *gep = cast<llvm::GetElementPtrInst>(secondOperand);
+    CallBase *callB = cast<CallBase>(firstOperand);
+    if (gep->getPointerOperandType()->isPointerTy() 
+        && gep->getPointerOperandType()->getPointerElementType()->isStructTy()
+        && (gep->getPointerOperandType()->getPointerElementType()->getStructName().str() == "struct.ArrayStub"
+          || (gep->getPointerOperandType()->getPointerElementType()->getStructName().str() == "struct.MapStub" 
+            && gep->getName().str() == "values_present"))) {
+      Value *fp = callB->getCalledOperand();
+      Function *f = getTargetFunction(fp);
+      if (f->getName().str() == "calloc") {
+        llvm::errs() << "called calloc ";
+        i->dump();
+        ObjectPair callocOP;
+        bool callocResolveSuccess;
+        if (state.addressSpace.resolveOne(state, solver.get(), value, callocOP, callocResolveSuccess)) {
+          const MemoryObject *callocMO = callocOP.first;
+          const ObjectState *callocOS = callocOP.second;
+          llvm::errs() << "Successfully resolved pointer to map " << callocMO->id << "\n";
+          callocOS->print();
+          llvm::errs() << "Got name from state: " << state.nextMapName << "\n";
+          bool isArrayMap = (i->getFunction()->getName().str() == "array_allocate");
+          state.addMapMemoryObjects(state.nextMapName, callocMO->id, state.nextMapSize, isArrayMap);
+          state.printMapMemoryObjects();
+        } else {
+          assert(0 && "Could not find object from calloc");
+        }
+      }
+    }
+  }
+
+  // Get the size of the values
+  if ((i->getFunction()->getName().str() == "array_allocate" && firstOperand == i->getFunction()->getArg(2)) 
+      || (i->getFunction()->getName().str() == "map_allocate" && firstOperand == i->getFunction()->getArg(3))) {
+    llvm::errs() << "Map Allocate - for size ";
+    value->dump();
+    if (ConstantExpr *ce = dyn_cast<ConstantExpr>(value)) {
+      state.nextMapSize = ce->getZExtValue();
+    } else {
+      state.nextMapSize = 0;
+    }
+  }
+
+  // Get the name of the map
+  if ((i->getFunction()->getName().str() == "array_allocate" || i->getFunction()->getName().str() == "map_allocate") 
+      && firstOperand == i->getFunction()->getArg(0)) {
+    llvm::errs() << "Array allocate - for name ";
+    firstOperand->dump();
+    value->dump();
+    std::string argStr = specialFunctionHandler->readStringAtAddress(state, value);
+    llvm::errs() << "Name " << argStr << "\n";
+    state.nextMapName = argStr;
+  }
+}
+
 void Executor::executeMemoryOperation(ExecutionState &state,
                                       bool isWrite,
                                       ref<Expr> address,
@@ -4773,6 +4960,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                                          StateTerminationType::ReadOnly);
           } else {
             Instruction *i = state.prevPC->inst;
+            llvm::Value *firstOperand = i->getOperand(0);
             llvm::Value *secondOperand = i->getOperand(1);
 
             if (llvm::GetElementPtrInst *gep = dyn_cast<llvm::GetElementPtrInst>(secondOperand)) {
@@ -4794,6 +4982,9 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                 }
               }
             }
+            handleMapInit(state, i, value);
+            handleMapLookupAndUpdate(state, i, value);    
+            handleMapStore(state, i, mo, offset);        
 
             if (state.getXDPMemoryObjectID() == mo->id) {
               llvm::errs() << "---- Instruction ";
@@ -4809,23 +5000,23 @@ void Executor::executeMemoryOperation(ExecutionState &state,
                 state.addWrite(accessedStr);
               }
             }
-            if (state.isReferencetoMapReturn(i->getOperand(1)) && !state.isReferencetoMapReturn(i->getOperand(0))) {
-              state.removeMapReference(i->getOperand(1));
-              if (LoadInst *loadInst = dyn_cast<LoadInst>(i->getOperand(1))) {
+            if (state.isReferencetoMapReturn(secondOperand) && !state.isReferencetoMapReturn(firstOperand)) {
+              state.removeMapReference(secondOperand);
+              if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
                 if (loadInst->getPointerOperandType()->isPointerTy()
                     && loadInst->getPointerOperandType()->getPointerElementType()->isPointerTy()) {
                   state.removeMapReference(loadInst->getOperand(0));
                 }
               }
             } else {
-              state.addIfReferencetoMapReturn(i->getOperand(0), i->getOperand(1));
+              state.addIfReferencetoMapReturn(firstOperand, secondOperand);
             }
 
-            std::pair<bool, std::string> mapLookupRet = state.isMapLookupReturn(i->getOperand(1));
+            std::pair<bool, std::string> mapLookupRet = state.isMapLookupReturn(secondOperand);
             if (mapLookupRet.first) {
-              state.addWrite(mapLookupRet.second);
+              // state.addWrite(mapLookupRet.second);
             } else {
-              state.addIfMapLookupRef(i->getOperand(0), i->getOperand(1));
+              state.addIfMapLookupRef(firstOperand, secondOperand);
             }
 
             ObjectState *wos = state.addressSpace.getWriteable(mo, os);
@@ -4852,7 +5043,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
               state.addRead(accessedStr);
             }
           }
-          
+          handleArrayMapLoad(state, i, result);
           state.addIfMapLookupRef(i->getOperand(0), i);
           state.addIfReferencetoMapReturn(i->getOperand(0), i);
           bindLocal(target, state, result);

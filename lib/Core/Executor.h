@@ -31,6 +31,8 @@
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
 
 #include <map>
 #include <memory>
@@ -318,7 +320,15 @@ private:
                    KInstruction *ki,
                    llvm::Function *f,
                    std::vector< ref<Expr> > &arguments);
-                   
+  
+  // handle array map access
+  void handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction *i, ref<Expr> value);
+  // Handle initialisation for array maps
+  void handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Expr> value);
+  void handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<Expr> value);
+  void handleMapStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset);
+  std::string getMapKeyString(ref<Expr> key, unsigned int size);
+
   // do address resolution / object binding / out of bounds checking
   // and perform the operation
   void executeMemoryOperation(ExecutionState &state,
