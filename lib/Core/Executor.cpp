@@ -1719,7 +1719,6 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     unsigned keySize = 32;
     Instruction *i = ki->inst;
     llvm::CallBase *callB = cast<llvm::CallBase>(i);
-    state.createNewMapReturn(callB);
 
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
       name = bitcastMap->getOperand(0)->getName().str();
@@ -1743,7 +1742,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       }
       // If there is a dependency
       for (auto &arg : mapArgs) {
-        for (auto &sourceCall : state.findReferenceToMapReturn(arg)) {
+        for (auto &sourceCall : state.findOriginalMapCall(arg)) {
           llvm::errs() << "Found a correlation!! ";
           sourceCall->dump();
           Value *fp = sourceCall->getCalledOperand();
@@ -1861,6 +1860,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     }
     state.nextMapKey = keyName;
     state.addMapString(i, fName, name, keyName, ki->info);
+    state.createNewMapReturn(callB, ki->info, fName, name, keyName);
   } else if (fName == "bpf_xdp_adjust_head") {
     llvm::errs() << "Called bpf_xdp_adjust_head, read write set functionality not implemented yet\n";
   }
@@ -4735,7 +4735,9 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
     MapInfo mapInfo = state.getMapInfo(mo->id);
     offset->dump();
     if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
-      Value *val = state.findReferenceToMapReturn(loadInst->getOperand(0)).back();
+      std::vector<llvm::CallBase*> references = state.findOriginalMapCall(loadInst->getOperand(0));
+      assert(!references.empty() && "Could not find original call to map");
+      Value *val = references.back();
       std::string key = state.getMapCallKey(val);
       if (key != "") {
         llvm::errs() << "Found key to call... " << key << "\n";
@@ -4770,14 +4772,6 @@ std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
         keyName = "sym";
         break;
       }
-      // default: {
-      //   llvm::errs() << "Not handled type of kid ";
-      //   Expr::printKind(llvm::errs(), kid->getKind());
-      //   llvm::errs() << "\n";
-      //   kid->dump();
-      //   assert(0 && "Error: handling of kid type not implemented");
-      //   break;
-      // }
     }
   } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(key)) {
     // Parts of this read contains symbolic bytes
@@ -4798,7 +4792,6 @@ std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
         valueStr += ("b" + std::to_string(currByte) + "(sym)_");
       }
       currByte++;
-      // currLeft->dump();
     } while ((currRight->getRight()->getKind() == Expr::Concat) && (currRight = dyn_cast<ConcatExpr>(currRight->getRight())));
     // while there is more to read
 
@@ -4819,6 +4812,7 @@ std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
 void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Expr> value) {
   llvm::Value *firstOperand = i->getOperand(0);
   llvm::Value *secondOperand = i->getOperand(1);
+  std::string fName = i->getFunction()->getName().str();
 
   // Get the memory object of the array map
   if (isa<GetElementPtrInst>(secondOperand) && isa<CallBase>(firstOperand)) {
@@ -4851,8 +4845,8 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
   }
 
   // Get the size of the values
-  if ((i->getFunction()->getName().str() == "array_allocate" && firstOperand == i->getFunction()->getArg(2)) 
-      || (i->getFunction()->getName().str() == "map_allocate" && firstOperand == i->getFunction()->getArg(3))) {
+  if ((fName == "array_allocate" && firstOperand == i->getFunction()->getArg(2)) 
+      || (fName == "map_allocate" && firstOperand == i->getFunction()->getArg(3))) {
     llvm::errs() << "Map Allocate - for size ";
     value->dump();
     if (ConstantExpr *ce = dyn_cast<ConstantExpr>(value)) {
@@ -4863,7 +4857,7 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
   }
 
   // Get the name of the map
-  if ((i->getFunction()->getName().str() == "array_allocate" || i->getFunction()->getName().str() == "map_allocate") 
+  if ((fName == "array_allocate" || fName == "map_allocate") 
       && firstOperand == i->getFunction()->getArg(0)) {
     std::string argStr = specialFunctionHandler->readStringAtAddress(state, value);
     state.nextMapName = argStr;

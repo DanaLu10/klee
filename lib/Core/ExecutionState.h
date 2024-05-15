@@ -166,6 +166,16 @@ struct MapInfo {
   bool isArrayMap;
 };
 
+struct CallInfo {
+  int sourceLine;
+  int sourceColumn;
+  std::string sourceFile;
+  std::string functionName;
+  std::string mapName;
+  std::string keyName;
+  std::unordered_set<const llvm::Value*> references;
+};
+
 /// @brief ExecutionState representing a path under exploration
 class ExecutionState {
 #ifdef KLEE_UNITTEST
@@ -282,14 +292,8 @@ public:
   /// @brief Write set of path.
   std::set<std::string> writeSet;
 
-  /// @brief Set of values which may hold references to the arguments of a function
-  std::unordered_set<llvm::Value*> referencesToArg;
-
   /// @brief Set of values which are part of the references to the arguments of a function
   std::unordered_set<llvm::Value*> argContents;
-
-  /// @brief Set of values which are used in inlined functions
-  std::unordered_set<llvm::Value*> inlinedFunctionVars;
 
   /// @brief Mapping from lookup call to string representation of map name with key value
   std::map<llvm::Value*, std::string> mapLookupString;
@@ -297,8 +301,8 @@ public:
   /// @brief Set of values which are references to a location returned by a lookup
   std::map<llvm::Value*, std::unordered_set<const llvm::Value*>> mapLookupReturns;
 
-  /// @brief Mapping from map helper function call to uses of the return value of function call
-  std::map<llvm::CallBase*, std::unordered_set<const llvm::Value*>> referencesToMapReturn;
+  /// @brief Mapping from map helper function call to information on that call
+  std::map<llvm::CallBase*, CallInfo> referencesToMapReturn;
   
   /// @brief Map from the memory object ID of that map to the name of the map and size of the key
   std::map<unsigned int, MapInfo> mapMemoryObjects;
@@ -317,11 +321,6 @@ public:
   std::string nextMapName;
   std::string nextMapKey;
   unsigned int nextMapSize;
-
-  int nextRegName = 0;
-
-  ref<Expr> packetBaseAddr;
-  ref<Expr> packetEndAddr;
 
 public:
 #ifdef KLEE_UNITTEST
@@ -344,29 +343,15 @@ public:
   void addRead(std::string newRead);
   void addWrite(std::string newWrite);
 
-  void addReferenceToArg(llvm::Value *val);
-  bool isReferenceToArg(llvm::Value *val);
-  void printReferences();
-
-  void addArgContent(llvm::Value *val);
-  bool isArgContent(llvm::Value *val);
-
-  std::string getNextRegNameAndIncrement();
-
   bool isFunctionForAnalysis(llvm::Function *func);
-  bool isValueForAnalysis(llvm::Value *val);
   bool isAddressValue(llvm::Value *val);
-
-  void setPacketBaseAddr(ref<Expr> base);
-  ref<Expr> getPacketBaseAddr();
-  void setPacketEndAddr(ref<Expr> end);
-  ref<Expr> getPacketEndAddr();
 
   void setXDPMemoryObjectID(unsigned int id);
   unsigned int getXDPMemoryObjectID();
 
   bool isReferencetoMapReturn(llvm::Value *val);
-  void createNewMapReturn(llvm::CallBase *val);
+  void createNewMapReturn(llvm::CallBase *val, const InstructionInfo *kiInfo, 
+    std::string functionName, std::string mapName, std::string keyVal);
   // If op is in any of the sets of values that reference a return value of a map helper
   // function call, add val into those sets
   bool addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val);
@@ -381,7 +366,7 @@ public:
 
   void addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info);
   std::string formatBranchMaps();
-  std::vector<llvm::CallBase*> findReferenceToMapReturn(llvm::Value *val);
+  std::vector<llvm::CallBase*> findOriginalMapCall(llvm::Value *val);
 
   void addMapCorrelation(std::string sourceMap, std::string dependentMap, 
                          std::string sourceFunction, std::string dependentFunction);

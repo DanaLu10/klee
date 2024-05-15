@@ -123,7 +123,6 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     base_mos(state.base_mos),
     readSet(state.readSet),
     writeSet(state.writeSet),
-    referencesToArg(state.referencesToArg),
     argContents(state.argContents),
     referencesToMapReturn(state.referencesToMapReturn),
     mapMemoryObjects(state.mapMemoryObjects),
@@ -151,39 +150,8 @@ void ExecutionState::addRead(std::string newRead) {
   readSet.insert(newRead);
 }
 
-void ExecutionState::addReferenceToArg(llvm::Value *val) {
-  referencesToArg.insert(val);
-}
-
-bool ExecutionState::isReferenceToArg(llvm::Value *val) {
-  return referencesToArg.find(val) != referencesToArg.end();
-}
-
-void ExecutionState::printReferences() {
-  llvm::errs() << "References to the arguments:\n";
-  llvm::errs() << "{ ";
-  for (auto const& reference : referencesToArg) {
-    reference->dump();
-  }
-  llvm::errs() << "}\n";
-}
-
-void ExecutionState::addArgContent(llvm::Value *val) {
-  argContents.insert(val);
-}
-
-bool ExecutionState::isArgContent(llvm::Value *val) {
-  return argContents.find(val) != argContents.end();
-}
-
 void ExecutionState::addWrite(std::string newWrite) {
   writeSet.insert(newWrite);
-}
-
-std::string ExecutionState::getNextRegNameAndIncrement() {
-  std::string value = std::to_string(nextRegName);
-  nextRegName++;
-  return value;
 }
 
 bool ExecutionState::isFunctionForAnalysis(llvm::Function *func) {
@@ -207,41 +175,6 @@ bool ExecutionState::isAddressValue(llvm::Value *val) {
   return valName.find(addressVars) != std::string::npos;
 }
 
-bool ExecutionState::isValueForAnalysis(llvm::Value *val) {
-  std::vector<std::string> removedNames{"", "retval", "argc.addr", "argv.addr"};
-  std::string valName = val->getName().str();
-  std::string addressVars = ".addr";
-
-  const std::regex tempVarRegex("((.)+\\.[0-9]+)");
-
-  if (valName.find("retval") != std::string::npos) {
-    return false;
-  }
-
-  if (std::regex_match(valName, tempVarRegex)) {
-    llvm::errs() << "Regex matched on " << valName << "\n";
-    return false;
-  }
-
-  return std::find(removedNames.begin(), removedNames.end(), valName) == removedNames.end();
-}
-
-void ExecutionState::setPacketBaseAddr(ref<Expr> base) {
-  packetBaseAddr = base;
-}
-
-ref<Expr> ExecutionState::getPacketBaseAddr() {
-  return packetBaseAddr;
-}
-
-void ExecutionState::setPacketEndAddr(ref<Expr> end) {
-  packetEndAddr = end;
-}
-
-ref<Expr> ExecutionState::getPacketEndAddr() {
-  return packetEndAddr;
-}
-
 void ExecutionState::setXDPMemoryObjectID(unsigned int id) {
   xdpMoId = id;
 }
@@ -252,27 +185,36 @@ unsigned int ExecutionState::getXDPMemoryObjectID() {
 
 bool ExecutionState::isReferencetoMapReturn(llvm::Value *val) {
   for (const auto &c : referencesToMapReturn) {
-    if (c.second.find(val) != c.second.end()) {
+    if (c.second.references.find(val) != c.second.references.end()) {
       return true;
     }
   }
   return false;
 }
 
-std::vector<llvm::CallBase*> ExecutionState::findReferenceToMapReturn(llvm::Value *val) {
+std::vector<llvm::CallBase*> ExecutionState::findOriginalMapCall(llvm::Value *val) {
   std::vector<llvm::CallBase*> mapReturns;
   for (const auto &c : referencesToMapReturn) {
-    if (c.second.find(val) != c.second.end()) {
+    if (c.second.references.find(val) != c.second.references.end()) {
       mapReturns.push_back(c.first);
     }
   }
   return mapReturns;
 }
 
-void ExecutionState::createNewMapReturn(llvm::CallBase *val) {
+void ExecutionState::createNewMapReturn(llvm::CallBase *val, const InstructionInfo *kiInfo, 
+    std::string functionName, std::string mapName, std::string keyVal) {
   std::unordered_set<const llvm::Value*> newSet;
+  CallInfo info;
   newSet.insert(val);
-  referencesToMapReturn.insert(std::make_pair(val, newSet));
+  info.references = newSet;
+  info.sourceLine = kiInfo->line;
+  info.sourceColumn = kiInfo->column;
+  info.sourceFile = kiInfo->file;
+  info.functionName = functionName;
+  info.keyName = keyVal;
+  info.mapName = mapName;
+  referencesToMapReturn.insert(std::make_pair(val, info));
   llvm::errs() << "Created new entry for instruction ";
   val->dump();
 }
@@ -301,8 +243,8 @@ void ExecutionState::printReferencesToMapReturnKeys() {
 bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val) {
   bool added = false;
   for (auto &c : referencesToMapReturn) {
-    if (c.second.find(op) != c.second.end() || op == c.first) {
-      c.second.insert(val);
+    if (c.second.references.find(op) != c.second.references.end() || op == c.first) {
+      c.second.references.insert(val);
       added = true;
     }
   }
@@ -311,13 +253,13 @@ bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val
 
 void ExecutionState::removeMapReference(llvm::Value *val) {
   for (auto &c : referencesToMapReturn) {
-    c.second.erase(val);
+    c.second.references.erase(val);
   }
 }
 
+// add a map correlation between source map and head map
 void ExecutionState::addMapCorrelation(std::string sourceMap, std::string dependentMap, 
-  // add a map correlation between source map and head map
-  std::string sourceFunction, std::string dependentFunction) {
+    std::string sourceFunction, std::string dependentFunction) {
   MapCorrelationInformation newInfo;
   newInfo.sourceMapFunction = sourceFunction;
   newInfo.dependentMapFunction = dependentFunction;
@@ -347,7 +289,6 @@ void ExecutionState::addNewMapLookup(llvm::Value *val, std::string repr) {
 }
 
 bool ExecutionState::addIfMapLookupRef(llvm::Value *op, llvm::Value *val) {
-  // mapLookupReturns.insert(val);
   bool added = false;
   for (auto &c : mapLookupReturns) {
     if (c.second.find(op) != c.second.end() || op == c.first) {
@@ -401,7 +342,7 @@ std::string ExecutionState::formatBranchMaps() {
   std::string maps;
 
   for (auto &branch : branchesOnMapReturnReference) {
-    for (auto &c: findReferenceToMapReturn(branch.first)) {
+    for (auto &c: findOriginalMapCall(branch.first)) {
       llvm::errs() << "Reference to ";
       c->dump();
       std::string mapStr = "Unknown map and function\n";
