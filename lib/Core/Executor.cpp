@@ -1735,25 +1735,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
           assert(0 && "Error: case for argument of this type not implemented yet.");
         }
       }
-      std::vector<llvm::Value*> mapArgs;
-      mapArgs.push_back(callB->getOperand(1));
-      if (fName == "bpf_map_update_elem") {
-        mapArgs.push_back(callB->getOperand(2));
-      }
-      // If there is a dependency
-      for (auto &arg : mapArgs) {
-        for (auto &sourceCall : state.findOriginalMapCall(arg)) {
-          llvm::errs() << "Found a correlation!! ";
-          sourceCall->dump();
-          Value *fp = sourceCall->getCalledOperand();
-          Function *callF = getTargetFunction(fp);
-          llvm::BitCastOperator *sourceBitcast = cast<llvm::BitCastOperator>(sourceCall->getOperand(0));
-          std::string sourceMapName = sourceBitcast->getOperand(0)->getName().str();
-          state.addMapCorrelation(sourceMapName, name, callF->getName().str(), fName);
-        }
-      }
     } else {
-      // DANATODO: figure out what to do if it is not a bitcast
       assert(0 && "Error: No implementation for if no bitcast");
     }
 
@@ -1861,6 +1843,23 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     state.nextMapKey = keyName;
     state.addMapString(i, fName, name, keyName, ki->info);
     state.createNewMapReturn(callB, ki->info, fName, name, keyName);
+    std::vector<llvm::Value*> mapArgs;
+    mapArgs.push_back(callB->getOperand(1));
+    if (fName == "bpf_map_update_elem") {
+      mapArgs.push_back(callB->getOperand(2));
+    }
+    // If there is a dependency
+    for (auto &arg : mapArgs) {
+      for (auto &sourceCall : state.findOriginalMapCall(arg)) {
+        llvm::errs() << "Found a correlation!! ";
+        sourceCall->dump();
+        Value *fp = sourceCall->getCalledOperand();
+        Function *callF = getTargetFunction(fp);
+        llvm::BitCastOperator *sourceBitcast = cast<llvm::BitCastOperator>(sourceCall->getOperand(0));
+        std::string sourceMapName = sourceBitcast->getOperand(0)->getName().str();
+        state.addMapCorrelation(sourceCall, callB);
+      }
+    }
   } else if (fName == "bpf_xdp_adjust_head") {
     llvm::errs() << "Called bpf_xdp_adjust_head, read write set functionality not implemented yet\n";
   }

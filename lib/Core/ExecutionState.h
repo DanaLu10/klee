@@ -152,14 +152,6 @@ struct CleanupPhaseUnwindingInformation : public UnwindingInformation {
   }
 };
 
-struct MapCorrelationInformation {
-  std::string sourceMapName;
-  std::string dependentMapName;
-  std::string sourceMapFunction;
-  std::string dependentMapFunction;
-  std::string variable;
-};
-
 struct MapInfo {
   std::string mapName;
   unsigned int mapSize;
@@ -314,7 +306,7 @@ public:
   std::set<std::pair<llvm::Value*, std::string>> branchesOnMapReturnReference;
 
   /// @brief Set of map pairs where there is a correlation from the left map to the right map
-  std::vector<MapCorrelationInformation> correlatedMaps;
+  std::vector<std::pair<llvm::CallBase*, llvm::CallBase*>> correlatedMaps;
 
   unsigned int xdpMoId;
 
@@ -368,8 +360,7 @@ public:
   std::string formatBranchMaps();
   std::vector<llvm::CallBase*> findOriginalMapCall(llvm::Value *val);
 
-  void addMapCorrelation(std::string sourceMap, std::string dependentMap, 
-                         std::string sourceFunction, std::string dependentFunction);
+  void addMapCorrelation(llvm::CallBase *sourceCall, llvm::CallBase *destCall);
   std::vector<std::string> formatMapCorrelations();
   void printReferencesToMapReturnKeys();
 

@@ -124,10 +124,13 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     readSet(state.readSet),
     writeSet(state.writeSet),
     argContents(state.argContents),
+    mapLookupString(state.mapLookupString),
+    mapLookupReturns(state.mapLookupReturns),
     referencesToMapReturn(state.referencesToMapReturn),
     mapMemoryObjects(state.mapMemoryObjects),
     mapCallStrings(state.mapCallStrings),
     branchesOnMapReturnReference(state.branchesOnMapReturnReference),
+    correlatedMaps(state.correlatedMaps),
     nextMapName(state.nextMapName),
     nextMapKey(state.nextMapKey),
     nextMapSize(state.nextMapSize) {
@@ -258,21 +261,23 @@ void ExecutionState::removeMapReference(llvm::Value *val) {
 }
 
 // add a map correlation between source map and head map
-void ExecutionState::addMapCorrelation(std::string sourceMap, std::string dependentMap, 
-    std::string sourceFunction, std::string dependentFunction) {
-  MapCorrelationInformation newInfo;
-  newInfo.sourceMapFunction = sourceFunction;
-  newInfo.dependentMapFunction = dependentFunction;
-  newInfo.sourceMapName = sourceMap;
-  newInfo.dependentMapName = dependentMap;
-  correlatedMaps.push_back(newInfo);
+void ExecutionState::addMapCorrelation(llvm::CallBase *sourceCall, llvm::CallBase *destCall) {
+  correlatedMaps.push_back(std::make_pair(sourceCall, destCall));
 }
 
 std::vector<std::string> ExecutionState::formatMapCorrelations() {
   std::vector<std::string> mapInfo;
 
   for (auto &c : correlatedMaps) {
-    std::string newInfo = c.sourceMapFunction + "(" + c.sourceMapName + ")->" + c.sourceMapFunction + "(" + c.dependentMapName + ")";
+    llvm::CallBase *sourceCall = c.first;
+    llvm::CallBase *destCall = c.second;
+    CallInfo sourceInfo = referencesToMapReturn.find(sourceCall)->second;
+    CallInfo destInfo = referencesToMapReturn.find(destCall)->second;
+
+    std::string newInfo = sourceInfo.sourceFile + "(" + std::to_string(sourceInfo.sourceLine) + "," + std::to_string(sourceInfo.sourceColumn)
+      + ")-" + sourceInfo.functionName + "(" + sourceInfo.mapName + "," + sourceInfo.keyName + ")->" 
+      + destInfo.sourceFile + "(" + std::to_string(destInfo.sourceLine) + "," + std::to_string(destInfo.sourceColumn) + ")-"
+      + destInfo.functionName + "(" + destInfo.mapName + "," + destInfo.keyName + ")";
     mapInfo.push_back(newInfo);
   }
 
