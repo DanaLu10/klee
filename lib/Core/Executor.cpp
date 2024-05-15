@@ -4676,12 +4676,10 @@ std::vector<std::string> Executor::formatPacketOffsetName(ExecutionState &state,
 void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction *i, ref<Expr> value) {
   llvm::Value *firstOperand = i->getOperand(0);
   llvm::Value *secondOperand = i->getOperand(1);
-
+  std::string fName = i->getFunction()->getName().str();
   // DANATODO: may need a better condition
-  if (((i->getFunction()->getName().str() == "map_lookup_elem" || i->getFunction()->getName().str() == "array_lookup_elem")
-      && secondOperand->getName().str() == "retval")
-      || (i->getFunction()->getName().str() == "map_update_elem" && firstOperand->getType()->isPointerTy())) {
-  // if (firstOperand->getType()->isPointerTy()) {
+  if (((fName == "map_lookup_elem" || fName == "array_lookup_elem") && secondOperand->getName().str() == "retval")
+      || ((fName == "map_update_elem" || fName == "array_update_elem") && firstOperand->getType()->isPointerTy())) {
     ObjectPair lookupOP;
     bool lookupResolveSuccess;
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
@@ -4691,7 +4689,7 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
         llvm::errs() << "Found a read...\n";
         i->dump();
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
-        if (i->getFunction()->getName().str() == "map_update_elem") {
+        if (i->getFunction()->getName().str() == "map_update_elem" || i->getFunction()->getName().str() ==  "array_update_elem") {
           state.addWrite("map:" + mapInfo.mapName + "." + state.nextMapKey);
         } else {
           state.addRead("map:" + mapInfo.mapName + "." + state.nextMapKey);
@@ -4705,7 +4703,7 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
   ObjectPair lookupOP;
   bool lookupResolveSuccess;
   std::string fName = i->getFunction()->getName().str();
-  if (fName != "array_allocate" && fName != "array_lookup_elem" 
+  if (fName != "array_allocate" && fName != "array_lookup_elem" && fName != "array_update_elem" && fName != "memcpy"
       && i->getPointerOperandType()->isPointerTy()
       && i->getPointerOperandType()->getPointerElementType()->isPointerTy()) {
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
@@ -4731,7 +4729,7 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
 void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset) {
   llvm::Value *secondOperand = i->getOperand(1);
 
-  if (state.isMapMemoryObject(mo->id)) {
+  if (i->getFunction()->getName().str() != "memcpy" && state.isMapMemoryObject(mo->id)) {
     llvm::errs() << "================ Found a write to map object " << std::to_string(mo->id) << "\n";
     i->dump();
     MapInfo mapInfo = state.getMapInfo(mo->id);
@@ -4744,6 +4742,11 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
         state.addWrite("map:" + mapInfo.mapName + "." + key);
       }
     }
+  } else if (i->getFunction()->getName().str() == "memcpy" && state.isMapMemoryObject(mo->id)) {
+    // llvm::errs() << "================ Found a write to map object " << std::to_string(mo->id) << "\n";
+    // i->dump();
+    // MapInfo mapInfo = state.getMapInfo(mo->id);
+
   }
 
 }
@@ -4763,18 +4766,18 @@ std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
         keyName = valueStr;
         break;
       }
-      case (Expr::Read): {
+      default: {
         keyName = "sym";
         break;
       }
-      default: {
-        llvm::errs() << "Not handled type of kid ";
-        Expr::printKind(llvm::errs(), kid->getKind());
-        llvm::errs() << "\n";
-        kid->dump();
-        assert(0 && "Error: handling of kid type not implemented");
-        break;
-      }
+      // default: {
+      //   llvm::errs() << "Not handled type of kid ";
+      //   Expr::printKind(llvm::errs(), kid->getKind());
+      //   llvm::errs() << "\n";
+      //   kid->dump();
+      //   assert(0 && "Error: handling of kid type not implemented");
+      //   break;
+      // }
     }
   } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(key)) {
     // Parts of this read contains symbolic bytes
@@ -4835,9 +4838,7 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
         bool callocResolveSuccess;
         if (state.addressSpace.resolveOne(state, solver.get(), value, callocOP, callocResolveSuccess)) {
           const MemoryObject *callocMO = callocOP.first;
-          const ObjectState *callocOS = callocOP.second;
           llvm::errs() << "Successfully resolved pointer to map " << callocMO->id << "\n";
-          callocOS->print();
           llvm::errs() << "Got name from state: " << state.nextMapName << "\n";
           bool isArrayMap = (i->getFunction()->getName().str() == "array_allocate");
           state.addMapMemoryObjects(state.nextMapName, callocMO->id, state.nextMapSize, isArrayMap);
@@ -4864,11 +4865,7 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
   // Get the name of the map
   if ((i->getFunction()->getName().str() == "array_allocate" || i->getFunction()->getName().str() == "map_allocate") 
       && firstOperand == i->getFunction()->getArg(0)) {
-    llvm::errs() << "Array allocate - for name ";
-    firstOperand->dump();
-    value->dump();
     std::string argStr = specialFunctionHandler->readStringAtAddress(state, value);
-    llvm::errs() << "Name " << argStr << "\n";
     state.nextMapName = argStr;
   }
 }
