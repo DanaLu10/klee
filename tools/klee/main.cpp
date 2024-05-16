@@ -1641,7 +1641,7 @@ int main(int argc, char **argv, char **envp) {
         first = false;
       handler->getVerificationStream() << read;
     }
-    handler->getVerificationStream() << "}\n";
+    handler->getVerificationStream() << "} \n";
   }
 
   if (WriteSet) {
@@ -1655,7 +1655,7 @@ int main(int argc, char **argv, char **envp) {
         first = false;
       handler->getVerificationStream() << write;
     }
-    handler->getVerificationStream() << "}\n";
+    handler->getVerificationStream() << "} \n";
   }
 
   if (MapCorrelation) {

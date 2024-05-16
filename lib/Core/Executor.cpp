@@ -4730,11 +4730,22 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
 
   if (i->getFunction()->getName().str() != "memcpy" && state.isMapMemoryObject(mo->id)) {
     llvm::errs() << "================ Found a write to map object " << std::to_string(mo->id) << "\n";
-    i->dump();
     MapInfo mapInfo = state.getMapInfo(mo->id);
-    offset->dump();
-    if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
-      std::vector<llvm::CallBase*> references = state.findOriginalMapCall(loadInst->getOperand(0));
+    if (mapInfo.isArrayMap) {
+      offset->dump();
+      std::string key = getMapKeyString(offset, state.getMapInfo(mo->id).mapSize);
+      llvm::errs() << "Found key to call... " << key << "\n";
+      state.addWrite("map:" + mapInfo.mapName + "." + key);
+    } else {
+      i->dump();
+      std::vector<llvm::CallBase*> references;
+      if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
+        references = state.findOriginalMapCall(loadInst->getOperand(0));
+      } else if (GetElementPtrInst *getElemPtr = dyn_cast<GetElementPtrInst>(secondOperand)) {
+        if (LoadInst *loadInst = dyn_cast<LoadInst>(getElemPtr->getOperand(0))) {
+          references = state.findOriginalMapCall(loadInst->getOperand(0));
+        }
+      }
       assert(!references.empty() && "Could not find original call to map");
       Value *val = references.back();
       std::string key = state.getMapCallKey(val);
