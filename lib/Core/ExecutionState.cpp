@@ -218,8 +218,8 @@ void ExecutionState::createNewMapReturn(llvm::CallBase *val, const InstructionIn
   info.keyName = keyVal;
   info.mapName = mapName;
   referencesToMapReturn.insert(std::make_pair(val, info));
-  llvm::errs() << "Created new entry for instruction ";
-  val->dump();
+  // llvm::errs() << "Created new entry for instruction ";
+  // val->dump();
 }
 
 void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName, std::string key, const InstructionInfo *info) {
@@ -289,8 +289,8 @@ void ExecutionState::addNewMapLookup(llvm::Value *val, std::string repr) {
   std::unordered_set<const llvm::Value*> newSet;
   newSet.insert(val);
   mapLookupReturns.insert(std::make_pair(val, newSet));
-  llvm::errs() << "Lookup: Created new entry for instruction ";
-  val->dump();
+  // llvm::errs() << "Lookup: Created new entry for instruction ";
+  // val->dump();
 }
 
 bool ExecutionState::addIfMapLookupRef(llvm::Value *op, llvm::Value *val) {
@@ -318,11 +318,18 @@ void ExecutionState::addBranchOnMapReturn(llvm::Value *val, const InstructionInf
   branchesOnMapReturnReference.insert(std::make_pair(val, branchInfo));
 }
 
-void ExecutionState::addMapMemoryObjects(std::string name, unsigned int id, unsigned int size, bool isArrayMap) {
+void ExecutionState::addMapMemoryObjects(unsigned int id, std::string allocateFunctionName) {
   MapInfo mapInfo;
-  mapInfo.isArrayMap = isArrayMap;
-  mapInfo.mapName = name;
-  mapInfo.mapSize = size;
+  mapInfo.mapName = nextMapName;
+  if (allocateFunctionName == "array_allocate") {
+    mapInfo.mapType = MapType::Array;
+    mapInfo.valueSize = nextValueSize;
+  } else if (allocateFunctionName == "map_allocate") {
+    mapInfo.mapType = MapType::Map;
+    mapInfo.keySize = nextKeySize;
+  } else if (allocateFunctionName == "map_of_map_allocate") {
+    mapInfo.mapType = MapType::MapOfMap;
+  }
   mapMemoryObjects.insert(std::make_pair(id, mapInfo));
 }
 
@@ -336,9 +343,19 @@ bool ExecutionState::isMapMemoryObject(unsigned int id) {
 }
 
 void ExecutionState::printMapMemoryObjects() {
-  llvm::errs() << "Map Memory Objects: {";
+  llvm::errs() << "Map Memory Objects: {\n";
   for (auto &c : mapMemoryObjects) {
-    llvm::errs() << "id: " << std::to_string(c.first) << ", name: " << c.second.mapName << ", size: " << std::to_string(c.second.mapSize) << "\n";
+    llvm::errs() << "id: " << std::to_string(c.first) 
+      << ", name: " << c.second.mapName 
+      << ", key size: " << std::to_string(c.second.keySize) 
+      << ", value size: " << std::to_string(c.second.valueSize);
+      if (c.second.mapType == MapType::Array) {
+        llvm::errs() << ", mapType: Array \n";
+      } else if (c.second.mapType == MapType::Map) {
+        llvm::errs() << ", mapType: Map \n";
+      } else if (c.second.mapType == MapType::MapOfMap) {
+        llvm::errs() << ", mapType: MapOfMap \n";
+      }
   }
   llvm::errs() << "}\n";
 }
@@ -348,8 +365,8 @@ std::string ExecutionState::formatBranchMaps() {
 
   for (auto &branch : branchesOnMapReturnReference) {
     for (auto &c: findOriginalMapCall(branch.first)) {
-      llvm::errs() << "Reference to ";
-      c->dump();
+      // llvm::errs() << "Reference to ";
+      // c->dump();
       std::string mapStr = "Unknown map and function\n";
       auto it = mapCallStrings.find(c);
       if (it != mapCallStrings.end()) {

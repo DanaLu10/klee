@@ -152,10 +152,18 @@ struct CleanupPhaseUnwindingInformation : public UnwindingInformation {
   }
 };
 
+enum class MapType {
+  Array,
+  Map,
+  MapOfMap
+};
+
 struct MapInfo {
   std::string mapName;
   unsigned int mapSize;
-  bool isArrayMap;
+  unsigned int keySize;
+  unsigned int valueSize;
+  MapType mapType;
 };
 
 struct CallInfo {
@@ -313,6 +321,8 @@ public:
   std::string nextMapName;
   std::string nextMapKey;
   unsigned int nextMapSize;
+  unsigned int nextKeySize;
+  unsigned int nextValueSize;
 
 public:
 #ifdef KLEE_UNITTEST
@@ -364,7 +374,7 @@ public:
   std::vector<std::string> formatMapCorrelations();
   void printReferencesToMapReturnKeys();
 
-  void addMapMemoryObjects(std::string name, unsigned int id, unsigned int size, bool isArrayMap);
+  void addMapMemoryObjects(unsigned int id, std::string allocateFunctionName);
 
   MapInfo getMapInfo(unsigned int id);
   bool isMapMemoryObject(unsigned int id);

@@ -1735,7 +1735,24 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
           assert(0 && "Error: case for argument of this type not implemented yet.");
         }
       }
+    } else if (auto const *loadInst = dyn_cast<llvm::LoadInst>(i->getOperand(0))) {
+      // mapName = "map:" + ;
+      // DANATODO: handle this case, for katran in function connection_table_lookup() the lookup function
+      if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
+        llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
+        if (t->isSized()) {
+          keySize = getWidthForLLVMType(t);
+        } else if (t->isStructTy()) {
+          llvm::StructType *st = cast<llvm::StructType>(bitcastKey->getSrcTy()->getPointerElementType());
+          keySize = kmodule->targetData->getStructLayout(st)->getSizeInBits();
+        } else {
+          assert(0 && "Error: case for argument of this type not implemented yet.");
+        }
+      }
+      llvm::errs() << "Got key size of " << std::to_string(keySize) << "\n";
+      exit(1);
     } else {
+      i->dump();
       assert(0 && "Error: No implementation for if no bitcast");
     }
 
@@ -4663,7 +4680,7 @@ std::vector<std::string> Executor::formatPacketOffsetName(ExecutionState &state,
 
     ref<ConstantExpr> symbOff = toConstant(state, byteOffset, "Byte offset symbolic");
     uint64_t val = symbOff->getZExtValue();
-    llvm::errs() << "Converted to constant, offset is now " << val << "\n";
+    // llvm::errs() << "Converted to constant, offset is now " << val << "\n";
 
     for (unsigned i = 0; i < bytes; i++) {
       valueStrs.push_back("b" + std::to_string(val + i));
@@ -4713,8 +4730,8 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
         i->dump();
         ref<Expr> offset = lookupMO->getOffsetExpr(value);
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
-        if (mapInfo.isArrayMap) {
-          std::string keyName = getMapKeyString(offset, mapInfo.mapSize);
+        if (mapInfo.mapType == MapType::Array) {
+          std::string keyName = getMapKeyString(offset, mapInfo.valueSize);
           llvm::errs() << "Offset was " << keyName << "\n";
           offset->dump();
           // exit(1);
@@ -4731,9 +4748,9 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
   if (i->getFunction()->getName().str() != "memcpy" && state.isMapMemoryObject(mo->id)) {
     llvm::errs() << "================ Found a write to map object " << std::to_string(mo->id) << "\n";
     MapInfo mapInfo = state.getMapInfo(mo->id);
-    if (mapInfo.isArrayMap) {
+    if (mapInfo.mapType == MapType::Array) {
       offset->dump();
-      std::string key = getMapKeyString(offset, state.getMapInfo(mo->id).mapSize);
+      std::string key = getMapKeyString(offset, state.getMapInfo(mo->id).valueSize);
       llvm::errs() << "Found key to call... " << key << "\n";
       state.addWrite("map:" + mapInfo.mapName + "." + key);
     } else {
@@ -4844,8 +4861,7 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
           const MemoryObject *callocMO = callocOP.first;
           llvm::errs() << "Successfully resolved pointer to map " << callocMO->id << "\n";
           llvm::errs() << "Got name from state: " << state.nextMapName << "\n";
-          bool isArrayMap = (i->getFunction()->getName().str() == "array_allocate");
-          state.addMapMemoryObjects(state.nextMapName, callocMO->id, state.nextMapSize, isArrayMap);
+          state.addMapMemoryObjects(callocMO->id, fName);
           state.printMapMemoryObjects();
         } else {
           assert(0 && "Could not find object from calloc");
@@ -4854,15 +4870,19 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
     }
   }
 
-  // Get the size of the values
-  if ((fName == "array_allocate" && firstOperand == i->getFunction()->getArg(2)) 
-      || (fName == "map_allocate" && firstOperand == i->getFunction()->getArg(3))) {
-    llvm::errs() << "Map Allocate - for size ";
-    value->dump();
+  if (fName == "array_allocate" && firstOperand == i->getFunction()->getArg(2)) {
     if (ConstantExpr *ce = dyn_cast<ConstantExpr>(value)) {
-      state.nextMapSize = ce->getZExtValue();
+      state.nextValueSize = ce->getZExtValue();
     } else {
-      state.nextMapSize = 0;
+      state.nextValueSize = 0;
+    }
+  }
+
+  if (fName == "map_allocate" && firstOperand == i->getFunction()->getArg(3)) {
+    if (ConstantExpr *ce = dyn_cast<ConstantExpr>(value)) {
+      state.nextKeySize = ce->getZExtValue();
+    } else {
+      state.nextKeySize = 0;
     }
   }
 
