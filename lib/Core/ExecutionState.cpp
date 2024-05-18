@@ -37,10 +37,10 @@ using namespace llvm;
 using namespace klee;
 
 namespace {
-cl::opt<bool> DebugLogStateMerge(
-    "debug-log-state-merge", cl::init(false),
-    cl::desc("Debug information for underlying state merging (default=false)"),
-    cl::cat(MergeCat));
+  cl::opt<bool> DebugLogStateMerge(
+      "debug-log-state-merge", cl::init(false),
+      cl::desc("Debug information for underlying state merging (default=false)"),
+      cl::cat(MergeCat));
   
 }
 namespace klee {
@@ -133,7 +133,9 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     correlatedMaps(state.correlatedMaps),
     nextMapName(state.nextMapName),
     nextMapKey(state.nextMapKey),
-    nextMapSize(state.nextMapSize) {
+    nextMapSize(state.nextMapSize),
+    generateMode(state.generateMode),
+    readWriteOverlap(state.readWriteOverlap) {
   for (const auto &cur_mergehandler: openMergeStack)
     cur_mergehandler->addOpenState(this);
 }
@@ -150,11 +152,23 @@ ExecutionState *ExecutionState::branch() {
 }
 
 void ExecutionState::addRead(std::string newRead) {
-  readSet.insert(newRead);
+  if (generateMode) {
+    readSet.insert(newRead);
+  } else {
+    if (writeSet.find(newRead) != writeSet.end()) {
+      readWriteOverlap.insert(newRead);
+    }
+  }
 }
 
 void ExecutionState::addWrite(std::string newWrite) {
-  writeSet.insert(newWrite);
+  if (generateMode) {
+    writeSet.insert(newWrite);
+  } else {
+    if (writeSet.find(newWrite) != writeSet.end() || readSet.find(newWrite) != readSet.end()) {
+      readWriteOverlap.insert(newWrite);
+    }
+  }
 }
 
 bool ExecutionState::isFunctionForAnalysis(llvm::Function *func) {

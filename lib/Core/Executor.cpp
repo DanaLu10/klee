@@ -1711,6 +1711,9 @@ ref<klee::ConstantExpr> Executor::getEhTypeidFor(ref<Expr> type_info) {
 void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
                            std::vector<ref<Expr>> &arguments) {
   std::string fName = f->getName().str();
+  if (fName == "__separate") {
+    state.generateMode = false;
+  }
   if (fName == "bpf_map_lookup_elem" || fName == "bpf_map_update_elem" 
       || fName == "bpf_map_delete_elem" || fName == "bpf_redirect_map") {
     std::string keyName = "unk_key";
@@ -4001,6 +4004,7 @@ void Executor::terminateState(ExecutionState &state,
   interpreterHandler->addToReadSet(state.readSet);
   interpreterHandler->addToWriteSet(state.writeSet);
   interpreterHandler->addToMapCorrelation(state.formatMapCorrelations());
+  interpreterHandler->addToReadWriteOverlap(state.readWriteOverlap);
   executionTree->setTerminationType(state, reason);
 
   std::vector<ExecutionState *>::iterator it =

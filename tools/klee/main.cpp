@@ -311,6 +311,11 @@ namespace {
           cl::desc("Generate file with correlations between maps"),
           cl::cat(FunctionalVerificationCat));
 
+  cl::opt<bool>
+  ReadWriteTwoPhase("read-write-two-phase",
+          cl::init(false),
+          cl::desc("Two phases of exeuction: generate read write sets, and looking up into read and write sets"),
+          cl::cat(FunctionalVerificationCat));
 }
 
 namespace klee {
@@ -327,6 +332,7 @@ private:
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
   std::unique_ptr<llvm::raw_ostream> m_verificationFile;
   std::unique_ptr<llvm::raw_ostream> m_mapCorrelationFile;
+  std::unique_ptr<llvm::raw_ostream> m_readWriteOverlapFile;
 
   SmallString<128> m_outputDirectory;
 
@@ -337,6 +343,7 @@ private:
   std::set<std::string> m_readSet; // write set
   std::set<std::string> m_writeSet; // read set
   std::vector<std::string> m_mapCorrelation; // Correlations between maps
+  std::set<std::string> m_readWriteOverlap;
 
   // used for writing .ktest files
   int m_argc;
@@ -349,6 +356,7 @@ public:
   llvm::raw_ostream &getInfoStream() const { return *m_infoFile; }
   llvm::raw_ostream &getVerificationStream() const { return *m_verificationFile; }
   llvm::raw_ostream &getMapCorrelationStream() const { return *m_mapCorrelationFile; }
+  llvm::raw_ostream &getReadWriteOverlapStream() const { return *m_readWriteOverlapFile; }
   /// Returns the number of test cases successfully generated so far
   unsigned getNumTestCases() { return m_numGeneratedTests; }
   unsigned getNumPathsCompleted() { return m_pathsCompleted; }
@@ -356,6 +364,7 @@ public:
   std::set<std::string> getReadSet() { return m_readSet; }
   std::set<std::string> getWriteSet() { return m_writeSet; }
   std::vector<std::string> getCorrelatedMaps() { return m_mapCorrelation; }
+  std::set<std::string> getReadWriteOverlap() { return m_readWriteOverlap; }
   void incPathsCompleted() { ++m_pathsCompleted; }
   void incPathsExplored(std::uint32_t num = 1) {
     m_pathsExplored += num; }
@@ -365,6 +374,8 @@ public:
     m_writeSet.merge(newSet); }
   void addToMapCorrelation(std::vector<std::string> newInfo) {
     m_mapCorrelation.insert(m_mapCorrelation.end(), newInfo.begin(), newInfo.end()); }
+  void addToReadWriteOverlap(std::set<std::string> newSet) {
+    m_readWriteOverlap.merge(newSet); }
 
   void setInterpreter(Interpreter *i);
 
@@ -463,10 +474,19 @@ KleeHandler::KleeHandler(int argc, char **argv)
   m_infoFile = openOutputFile("info");
 
   // open verification file
-  m_verificationFile = openOutputFile("verification");
+
+  if (ReadSet || WriteSet) {
+    m_verificationFile = openOutputFile("verification");
+  }
 
   // open map correlation file
-  m_mapCorrelationFile = openOutputFile("mapCorrelation");
+  if (MapCorrelation) {
+    m_mapCorrelationFile = openOutputFile("mapCorrelation");
+  }
+
+  if (ReadWriteTwoPhase) {
+    m_readWriteOverlapFile = openOutputFile("overlap");
+  }
 }
 
 KleeHandler::~KleeHandler() {
@@ -1170,7 +1190,8 @@ int main(int argc, char **argv, char **envp) {
      {&ChecksCat,      &DebugCat,    &ExtCallsCat, &ExprCat,     &LinkCat,
       &MemoryCat,      &MergeCat,    &MiscCat,     &ModuleCat,   &ReplayCat,
       &SearchCat,      &SeedingCat,  &SolvingCat,  &StartCat,    &StatsCat,
-      &TerminationCat, &TestCaseCat, &TestGenCat,  &ExecTreeCat, &ExecTreeCat});
+      &TerminationCat, &TestCaseCat, &TestGenCat,  &ExecTreeCat, &ExecTreeCat,
+      &FunctionalVerificationCat});
   llvm::InitializeNativeTarget();
 
   parseArguments(argc, argv);
@@ -1665,6 +1686,20 @@ int main(int argc, char **argv, char **envp) {
     for (auto const& correlation : correlatedMaps) {
       handler->getMapCorrelationStream() << correlation << "\n";
     }
+  }
+
+  if (ReadWriteTwoPhase) {
+    handler->getReadWriteOverlapStream() << "Read and Write Set overlap \n{ \n";
+    std::set<std::string> overlap = handler->getReadWriteOverlap();
+    bool first = true;
+    for (auto const& elem : overlap) {
+      if (!first)
+        handler->getReadWriteOverlapStream() << ", \n";
+      else 
+        first = false;
+      handler->getReadWriteOverlapStream() << "\t" << elem;
+    }
+    handler->getReadWriteOverlapStream() << "} \n";
   }
 
   std::stringstream stats;

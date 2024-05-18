@@ -324,6 +324,10 @@ public:
   unsigned int nextKeySize;
   unsigned int nextValueSize;
 
+  bool generateMode = true;
+
+  std::set<std::string> readWriteOverlap;
+
 public:
 #ifdef KLEE_UNITTEST
   // provide this function only in the context of unittests

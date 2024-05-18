@@ -46,6 +46,7 @@ public:
   virtual void addToReadSet(std::set<std::string> newSet) = 0;
   virtual void addToWriteSet(std::set<std::string> newSet) = 0;
   virtual void addToMapCorrelation(std::vector<std::string> newInfo) = 0;
+  virtual void addToReadWriteOverlap(std::set<std::string> newSet) = 0;
 
   virtual void processTestCase(const ExecutionState &state,
                                const char *err,
