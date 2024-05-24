@@ -1775,6 +1775,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       // read the pointer
       ref<Expr> offsetToArg = mo->getOffsetExpr(ce);
       ref<Expr> readValue = osarg->read(offsetToArg, keySize);
+      osarg->print();
 
       if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(readValue)) {
         std::string valueStr;
@@ -4837,6 +4838,7 @@ std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
   } else {
     keyName = "sym";
   }
+  llvm::errs() << "Key found was " << keyName;
   return keyName;
 }
 
@@ -4895,6 +4897,73 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
       && firstOperand == i->getFunction()->getArg(0)) {
     std::string argStr = specialFunctionHandler->readStringAtAddress(state, value);
     state.nextMapName = argStr;
+  }
+}
+
+void Executor::handlePacketDataStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset, unsigned bytes) {
+  if (state.getXDPMemoryObjectID() != 0 && state.getXDPMemoryObjectID() == mo->id) {
+    llvm::errs() << "---- Instruction ";
+    i->dump();
+    llvm::errs() << "Write to offset ";
+    offset->dump();
+    llvm::errs() << "Memory objects equal? " << (state.getXDPMemoryObjectID() == mo->id) << "\n";
+    llvm::errs() << "This memory object id " << mo->id << "\n";
+    std::string xdpMemObj = std::to_string(state.getXDPMemoryObjectID());
+    llvm::errs() << "State's memory object id " << xdpMemObj << "\n";
+    llvm::errs() << "-----\n";
+    for (std::string accessedStr : formatPacketOffsetName(state, offset, bytes)) {
+      state.addWrite(accessedStr);
+    }
+  }
+}
+
+void Executor::handlePacketDataLoad(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset, unsigned bytes) {
+  if (state.getXDPMemoryObjectID() != 0 && state.getXDPMemoryObjectID() == mo->id) {
+    llvm::errs() << "---- Instruction ";
+    i->dump();
+    llvm::errs() << "Read from offset ";
+    offset->dump();
+    llvm::errs() << "Memory objects equal? " << (state.getXDPMemoryObjectID() == mo->id) << "\n";
+    llvm::errs() << "This memory object id " << mo->id << "\n";
+    std::string xdpMemObj = std::to_string(state.getXDPMemoryObjectID());
+    llvm::errs() << "State's memory object id " << xdpMemObj << "\n";
+    llvm::errs() << "-----\n";
+    for (std::string accessedStr : formatPacketOffsetName(state, offset, bytes)) {
+      state.addRead(accessedStr);
+    }
+  }
+}
+
+void Executor::handlePacketDataInit(ExecutionState &state, llvm::Instruction *i, ref<Expr> value) {
+  if (state.getXDPMemoryObjectID() != 0) {
+    return;
+  }
+
+  llvm::Value *firstOperand = i->getOperand(0);
+  if (IntToPtrInst *intToPtr = dyn_cast<IntToPtrInst>(firstOperand)) {
+    if (ZExtInst *zext = dyn_cast<ZExtInst>(intToPtr->getOperand(0))) {
+      if (LoadInst *loadInst = dyn_cast<LoadInst>(zext->getOperand(0))) {
+        if (GetElementPtrInst* gep = dyn_cast<GetElementPtrInst>(loadInst->getOperand(0))) {
+          if (gep->isInBounds() 
+              && gep->hasAllZeroIndices() 
+              && gep->getPointerOperandType()->isPointerTy() 
+              && gep->getPointerOperandType()->getPointerElementType()->isStructTy()
+              && gep->getPointerOperandType()->getPointerElementType()->getStructName().str() == "struct.xdp_md") {
+          llvm::errs() << "----------Storing to data ";
+          i->dump();
+          ObjectPair newOp;
+          bool resolveSuccess;
+          if (state.addressSpace.resolveOne(state, solver.get(), value, newOp, resolveSuccess)) {
+            const MemoryObject *packetMo = newOp.first;
+            llvm::errs() << "Successfully resolved pointer to packet, id is " << packetMo->id << "\n";
+            state.setXDPMemoryObjectID(packetMo->id);
+          } else {
+            assert(0 && "Storing an unresolved pointer");
+          }
+        }
+        }
+      }
+    }
   }
 }
 
@@ -4988,43 +5057,12 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             llvm::Value *firstOperand = i->getOperand(0);
             llvm::Value *secondOperand = i->getOperand(1);
 
-            if (llvm::GetElementPtrInst *gep = dyn_cast<llvm::GetElementPtrInst>(secondOperand)) {
-              if (gep->isInBounds()
-                  && gep->hasAllZeroIndices()
-                  && gep->getPointerOperandType()->isPointerTy() 
-                  && gep->getPointerOperandType()->getPointerElementType()->isStructTy()
-                  && gep->getPointerOperandType()->getPointerElementType()->getStructName().str() == "struct.xdp_md") {
-                llvm::errs() << "----------Storing to data ";
-                i->dump();
-                ObjectPair newOp;
-                bool resolveSuccess;
-                if (state.addressSpace.resolveOne(state, solver.get(), value, newOp, resolveSuccess)) {
-                  const MemoryObject *packetMo = newOp.first;
-                  llvm::errs() << "Successfully resolved pointer to packet, id is " << packetMo->id << "\n";
-                  state.setXDPMemoryObjectID(packetMo->id);
-                } else {
-                  assert(0 && "Storing an unresolved pointer to xdp_md not handled");
-                }
-              }
-            }
+            handlePacketDataInit(state, i, value);
             handleMapInit(state, i, value);
             handleMapLookupAndUpdate(state, i, value);    
             handleMapStore(state, i, mo, offset);        
-
-            if (state.getXDPMemoryObjectID() == mo->id) {
-              llvm::errs() << "---- Instruction ";
-              i->dump();
-              llvm::errs() << "Write to offset ";
-              offset->dump();
-              llvm::errs() << "Memory objects equal? " << (state.getXDPMemoryObjectID() == mo->id) << "\n";
-              llvm::errs() << "This memory object id " << mo->id << "\n";
-              std::string xdpMemObj = std::to_string(state.getXDPMemoryObjectID());
-              llvm::errs() << "State's memory object id " << xdpMemObj << "\n";
-              llvm::errs() << "-----\n";
-              for (std::string accessedStr : formatPacketOffsetName(state, offset, bytes)) {
-                state.addWrite(accessedStr);
-              }
-            }
+            handlePacketDataStore(state, i, mo, offset, bytes);
+            
             if (state.isReferencetoMapReturn(secondOperand) && !state.isReferencetoMapReturn(firstOperand)) {
               state.removeMapReference(secondOperand);
               if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
@@ -5054,20 +5092,8 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             result = replaceReadWithSymbolic(state, result);
           
           llvm::LoadInst *i = cast<llvm::LoadInst>(state.prevPC->inst);
-          if (state.getXDPMemoryObjectID() != 0 && state.getXDPMemoryObjectID() == mo->id) {
-            llvm::errs() << "---- Instruction ";
-            i->dump();
-            llvm::errs() << "Read from offset ";
-            offset->dump();
-            llvm::errs() << "Memory objects equal? " << (state.getXDPMemoryObjectID() == mo->id) << "\n";
-            llvm::errs() << "This memory object id " << mo->id << "\n";
-            std::string xdpMemObj = std::to_string(state.getXDPMemoryObjectID());
-            llvm::errs() << "State's memory object id " << xdpMemObj << "\n";
-            llvm::errs() << "-----\n";
-            for (std::string accessedStr : formatPacketOffsetName(state, offset, bytes)) {
-              state.addRead(accessedStr);
-            }
-          }
+          
+          handlePacketDataLoad(state, i, mo, offset, bytes);
           handleArrayMapLoad(state, i, result);
           state.addIfMapLookupRef(i->getOperand(0), i);
           state.addIfReferencetoMapReturn(i->getOperand(0), i);

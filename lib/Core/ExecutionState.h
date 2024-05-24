@@ -316,7 +316,7 @@ public:
   /// @brief Set of map pairs where there is a correlation from the left map to the right map
   std::vector<std::pair<llvm::CallBase*, llvm::CallBase*>> correlatedMaps;
 
-  unsigned int xdpMoId;
+  unsigned int xdpMoId = 0;
 
   std::string nextMapName;
   std::string nextMapKey;

@@ -329,6 +329,15 @@ private:
   void handleMapStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset);
   std::string getMapKeyString(ref<Expr> key, unsigned int size);
 
+  // Handle finding the packet data
+  void handlePacketDataInit(ExecutionState &state, llvm::Instruction *i, ref<Expr> value);
+
+  // Handle storing to packet data
+  void handlePacketDataStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset, unsigned bytes);
+
+  // Handle loading from packet data
+  void handlePacketDataLoad(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset, unsigned bytes);
+
   // do address resolution / object binding / out of bounds checking
   // and perform the operation
   void executeMemoryOperation(ExecutionState &state,

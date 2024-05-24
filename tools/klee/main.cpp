@@ -1687,19 +1687,22 @@ int main(int argc, char **argv, char **envp) {
       handler->getMapCorrelationStream() << correlation << "\n";
     }
   }
-
+  std::stringstream readWriteInfo;
   if (ReadWriteTwoPhase) {
-    handler->getReadWriteOverlapStream() << "Read and Write Set overlap \n{ \n";
+    readWriteInfo << "Read and Write Set overlap \n{ \n";
+
+    // handler->getReadWriteOverlapStream() << "Read and Write Set overlap \n{ \n";
     std::set<std::string> overlap = handler->getReadWriteOverlap();
     bool first = true;
     for (auto const& elem : overlap) {
       if (!first)
-        handler->getReadWriteOverlapStream() << ", \n";
+        readWriteInfo << ", \n";
       else 
         first = false;
-      handler->getReadWriteOverlapStream() << "\t" << elem;
+      readWriteInfo << "\t" << elem;
     }
-    handler->getReadWriteOverlapStream() << "} \n";
+    readWriteInfo << "\n} \n";
+    handler->getReadWriteOverlapStream() << readWriteInfo.str();
   }
 
   std::stringstream stats;
@@ -1718,8 +1721,16 @@ int main(int argc, char **argv, char **envp) {
     llvm::errs().changeColor(llvm::raw_ostream::GREEN,
                              /*bold=*/true,
                              /*bg=*/false);
-
   llvm::errs() << stats.str();
+
+  if (useColors)
+    llvm::errs().changeColor(llvm::raw_ostream::CYAN,
+                             /*bold=*/true,
+                             /*bg=*/false);
+
+  if (ReadWriteTwoPhase) {
+    llvm::errs() << "\n" << readWriteInfo.str() << "\n";
+  }
 
   if (useColors)
     llvm::errs().resetColor();
