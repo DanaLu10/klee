@@ -172,7 +172,8 @@ struct CallInfo {
   std::string sourceFile;
   std::string functionName;
   std::string mapName;
-  std::string keyName;
+  std::string key;
+  std::string value;
   std::unordered_set<const llvm::Value*> references;
 };
 
@@ -296,25 +297,25 @@ public:
   std::unordered_set<llvm::Value*> argContents;
 
   /// @brief Mapping from lookup call to string representation of map name with key value
-  std::map<llvm::Value*, std::string> mapLookupString;
+  std::unordered_map<llvm::Value*, std::string> mapLookupString;
 
   /// @brief Set of values which are references to a location returned by a lookup
-  std::map<llvm::Value*, std::unordered_set<const llvm::Value*>> mapLookupReturns;
+  std::unordered_map<llvm::Value*, std::unordered_set<const llvm::Value*>> mapLookupReturns;
 
   /// @brief Mapping from map helper function call to information on that call
-  std::map<llvm::CallBase*, CallInfo> referencesToMapReturn;
+  std::unordered_map<llvm::CallBase*, CallInfo> referencesToMapReturn;
   
   /// @brief Map from the memory object ID of that map to the name of the map and size of the key
-  std::map<unsigned int, MapInfo> mapMemoryObjects;
+  std::unordered_map<unsigned int, MapInfo> mapMemoryObjects;
 
   /// @brief Mapping from calls to map helper functions to a string representation and call key
-  std::map<llvm::Value*, std::pair<std::string, std::string>> mapCallStrings;
+  std::unordered_map<llvm::Value*, std::pair<std::string, std::string>> mapCallStrings;
 
   /// @brief Set of calls to map helper functions which result in a branch
   std::set<std::pair<llvm::Value*, std::string>> branchesOnMapReturnReference;
 
   /// @brief Set of map pairs where there is a correlation from the left map to the right map
-  std::vector<std::pair<llvm::CallBase*, llvm::CallBase*>> correlatedMaps;
+  std::set<std::pair<std::pair<llvm::CallBase*, llvm::CallBase*>, std::string>> correlatedMaps;
 
   unsigned int xdpMoId = 0;
 
@@ -357,7 +358,7 @@ public:
 
   bool isReferencetoMapReturn(llvm::Value *val);
   void createNewMapReturn(llvm::CallBase *val, const InstructionInfo *kiInfo, 
-    std::string functionName, std::string mapName, std::string keyVal);
+    std::string functionName, std::string mapName, std::string keyVal, std::string value);
   // If op is in any of the sets of values that reference a return value of a map helper
   // function call, add val into those sets
   bool addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val);
@@ -374,8 +375,8 @@ public:
   std::string formatBranchMaps();
   std::vector<llvm::CallBase*> findOriginalMapCall(llvm::Value *val);
 
-  void addMapCorrelation(llvm::CallBase *sourceCall, llvm::CallBase *destCall);
-  std::vector<std::string> formatMapCorrelations();
+  void addMapCorrelation(llvm::CallBase *sourceCall, llvm::CallBase *destCall, std::string arg);
+  std::set<std::string> formatMapCorrelations();
   void printReferencesToMapReturnKeys();
 
   void addMapMemoryObjects(unsigned int id, std::string allocateFunctionName);

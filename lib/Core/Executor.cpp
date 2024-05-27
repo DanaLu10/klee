@@ -1726,38 +1726,25 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     if (auto const *bitcastMap = dyn_cast<llvm::BitCastOperator>(i->getOperand(0))) {
       name = bitcastMap->getOperand(0)->getName().str();
       mapName = "map:" + name;
-      // Obtain original size of key before bitcast into void pointer
-      if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
-        llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
-        if (t->isSized()) {
-          keySize = getWidthForLLVMType(t);
-        } else if (t->isStructTy()) {
-          llvm::StructType *st = cast<llvm::StructType>(bitcastKey->getSrcTy()->getPointerElementType());
-          keySize = kmodule->targetData->getStructLayout(st)->getSizeInBits();
-        } else {
-          assert(0 && "Error: case for argument of this type not implemented yet.");
-        }
-      }
     } else if (auto const *loadInst = dyn_cast<llvm::LoadInst>(i->getOperand(0))) {
-      // mapName = "map:" + ;
-      // DANATODO: handle this case, for katran in function connection_table_lookup() the lookup function
-      if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
-        llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
-        if (t->isSized()) {
-          keySize = getWidthForLLVMType(t);
-        } else if (t->isStructTy()) {
-          llvm::StructType *st = cast<llvm::StructType>(bitcastKey->getSrcTy()->getPointerElementType());
-          keySize = kmodule->targetData->getStructLayout(st)->getSizeInBits();
-        } else {
-          assert(0 && "Error: case for argument of this type not implemented yet.");
-        }
-      }
-      llvm::errs() << "Got key size of " << std::to_string(keySize) << "\n";
-      exit(1);
+      name = formatMapName(loadInst->getOperand(0)->getName().str());
+      mapName = "map:" + name;
     } else {
       i->dump();
       assert(0 && "Error: No implementation for if no bitcast");
     }
+    if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(i->getOperand(1))) {
+      llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
+      if (t->isSized()) {
+        keySize = getWidthForLLVMType(t);
+      } else if (t->isStructTy()) {
+        llvm::StructType *st = cast<llvm::StructType>(bitcastKey->getSrcTy()->getPointerElementType());
+        keySize = kmodule->targetData->getStructLayout(st)->getSizeInBits();
+      } else {
+        assert(0 && "Error: case for argument of this type not implemented yet.");
+      }
+    }
+    llvm::errs() << "Got key size of " << std::to_string(keySize) << "\n";
 
     ref<Expr> lookupKey = arguments[1];
     
@@ -1775,7 +1762,6 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       // read the pointer
       ref<Expr> offsetToArg = mo->getOffsetExpr(ce);
       ref<Expr> readValue = osarg->read(offsetToArg, keySize);
-      osarg->print();
 
       if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(readValue)) {
         std::string valueStr;
@@ -1788,7 +1774,9 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         ref<Expr> currLeft;
         ConcatExpr *currRight;
         currRight = valueCE;
-
+        llvm::errs() << "got value of ";
+        readValue->dump();
+        osarg->print();
         // Iterate over the concatenations
         do {
           currLeft = currRight->getLeft();
@@ -1814,13 +1802,6 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         keyName = valueStr;
       } else {
         keyName = "sym";
-        // llvm::errs() << "Not handled type ";
-        // Expr::printKind(llvm::errs(), readValue->getKind());
-        // llvm::errs() << "\n";
-        // readValue->dump();
-        // osarg->print();
-        // llvm::errs() << "Has size " << std::to_string(osarg->size) << "\n";
-        // assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
       }
     } else if (fName == "bpf_redirect_map") {
       if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(lookupKey)) {
@@ -1863,22 +1844,34 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     }
     state.nextMapKey = keyName;
     state.addMapString(i, fName, name, keyName, ki->info);
-    state.createNewMapReturn(callB, ki->info, fName, name, keyName);
-    std::vector<llvm::Value*> mapArgs;
-    mapArgs.push_back(callB->getOperand(1));
     if (fName == "bpf_map_update_elem") {
-      mapArgs.push_back(callB->getOperand(2));
-    }
-    // If there is a dependency
-    for (auto &arg : mapArgs) {
-      for (auto &sourceCall : state.findOriginalMapCall(arg)) {
+      unsigned valSize = getMapArgSize(i->getOperand(2));
+      ConstantExpr *valueCe = cast<ConstantExpr>(arguments[2]);
+      ObjectPair valueOp;
+      bool valueSuccess;
+      state.addressSpace.resolveOne(state, solver.get(), valueCe, valueOp, valueSuccess);
+      const MemoryObject *valueMo = valueOp.first;
+      const ObjectState *valueOs = valueOp.second;
+      assert(valueOs && "Error: Resolving not able to find object not handled. Check if function arguments were initialised");
+      ref<Expr> offsetToValue = valueMo->getOffsetExpr(valueCe);
+      ref<Expr> value = valueOs->read(offsetToValue, valSize);
+
+      std::string valName = getMapKeyString(value, valSize);
+      state.createNewMapReturn(callB, ki->info, fName, name, keyName, valName);
+      // If there is a dependency
+      for (auto &sourceCall : state.findOriginalMapCall(callB->getOperand(1))) {
+        state.addMapCorrelation(sourceCall, callB, "key");
+      }
+      for (auto &sourceCall : state.findOriginalMapCall(callB->getOperand(2))) {
+        state.addMapCorrelation(sourceCall, callB, "value");
+      }
+    } else {
+      state.createNewMapReturn(callB, ki->info, fName, name, keyName, "");
+      // If there is a dependency
+      for (auto &sourceCall : state.findOriginalMapCall(callB->getOperand(1))) {
         llvm::errs() << "Found a correlation!! ";
         sourceCall->dump();
-        Value *fp = sourceCall->getCalledOperand();
-        Function *callF = getTargetFunction(fp);
-        llvm::BitCastOperator *sourceBitcast = cast<llvm::BitCastOperator>(sourceCall->getOperand(0));
-        std::string sourceMapName = sourceBitcast->getOperand(0)->getName().str();
-        state.addMapCorrelation(sourceCall, callB);
+        state.addMapCorrelation(sourceCall, callB, "");
       }
     }
   } else if (fName == "bpf_xdp_adjust_head") {
@@ -2396,6 +2389,9 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
     BranchInst *bi = cast<BranchInst>(i);
     if (state.addIfReferencetoMapReturn(bi->getOperand(0), bi)) {
       state.addBranchOnMapReturn(bi, ki->info);
+      Value *condition = bi->getCondition();
+      llvm::errs() << "********** Condition that branch on";
+      condition->dump();
     }
     if (bi->isUnconditional()) {
       transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), state);
@@ -4685,7 +4681,6 @@ std::vector<std::string> Executor::formatPacketOffsetName(ExecutionState &state,
 
     ref<ConstantExpr> symbOff = toConstant(state, byteOffset, "Byte offset symbolic");
     uint64_t val = symbOff->getZExtValue();
-    // llvm::errs() << "Converted to constant, offset is now " << val << "\n";
 
     for (unsigned i = 0; i < bytes; i++) {
       valueStrs.push_back("b" + std::to_string(val + i));
@@ -4705,7 +4700,6 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
     bool lookupResolveSuccess;
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
       const MemoryObject *lookupMO = lookupOP.first;
-      // llvm::errs() << "Map lookup: Successfully resolved pointer to lookup " << lookupMO->id << "\n";
       if (state.isMapMemoryObject(lookupMO->id)) {
         llvm::errs() << "Found a read...\n";
         i->dump();
@@ -4739,7 +4733,6 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
           std::string keyName = getMapKeyString(offset, mapInfo.valueSize);
           llvm::errs() << "Offset was " << keyName << "\n";
           offset->dump();
-          // exit(1);
           state.addRead("map:" + mapInfo.mapName + "." + keyName);
         }
       }
@@ -4754,12 +4747,10 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
     llvm::errs() << "================ Found a write to map object " << std::to_string(mo->id) << "\n";
     MapInfo mapInfo = state.getMapInfo(mo->id);
     if (mapInfo.mapType == MapType::Array) {
-      offset->dump();
       std::string key = getMapKeyString(offset, state.getMapInfo(mo->id).valueSize);
       llvm::errs() << "Found key to call... " << key << "\n";
       state.addWrite("map:" + mapInfo.mapName + "." + key);
     } else {
-      i->dump();
       std::vector<llvm::CallBase*> references;
       if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
         references = state.findOriginalMapCall(loadInst->getOperand(0));
@@ -4842,6 +4833,30 @@ std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
   return keyName;
 }
 
+std::string Executor::formatMapName(std::string name) {
+  std::string::size_type pos = name.find('.');
+  if (pos != std::string::npos) {
+    return name.substr(0, pos);
+  }
+  return name;
+}
+
+unsigned Executor::getMapArgSize(llvm::Value *v) {
+  unsigned keySize = 32;
+  if (auto const *bitcastKey = dyn_cast<llvm::BitCastInst>(v)) {
+    llvm::Type *t = bitcastKey->getSrcTy()->getPointerElementType();
+    if (t->isSized()) {
+      keySize = getWidthForLLVMType(t);
+    } else if (t->isStructTy()) {
+      llvm::StructType *st = cast<llvm::StructType>(bitcastKey->getSrcTy()->getPointerElementType());
+      keySize = kmodule->targetData->getStructLayout(st)->getSizeInBits();
+    } else {
+      assert(0 && "Error: case for argument of this type not implemented yet.");
+    }
+  }
+  return keySize;
+}
+
 void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Expr> value) {
   llvm::Value *firstOperand = i->getOperand(0);
   llvm::Value *secondOperand = i->getOperand(1);
@@ -4851,32 +4866,39 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
   if (isa<GetElementPtrInst>(secondOperand) && isa<CallBase>(firstOperand)) {
     llvm::GetElementPtrInst *gep = cast<llvm::GetElementPtrInst>(secondOperand);
     CallBase *callB = cast<CallBase>(firstOperand);
+    Value *fp = callB->getCalledOperand();
+    Function *f = getTargetFunction(fp);
     if (gep->getPointerOperandType()->isPointerTy() 
         && gep->getPointerOperandType()->getPointerElementType()->isStructTy()
         && (gep->getPointerOperandType()->getPointerElementType()->getStructName().str() == "struct.ArrayStub"
           || (gep->getPointerOperandType()->getPointerElementType()->getStructName().str() == "struct.MapStub" 
-            && gep->getName().str() == "values_present"))) {
-      Value *fp = callB->getCalledOperand();
-      Function *f = getTargetFunction(fp);
-      if (f->getName().str() == "calloc") {
-        llvm::errs() << "called calloc ";
-        i->dump();
-        ObjectPair callocOP;
-        bool callocResolveSuccess;
-        if (state.addressSpace.resolveOne(state, solver.get(), value, callocOP, callocResolveSuccess)) {
-          const MemoryObject *callocMO = callocOP.first;
-          llvm::errs() << "Successfully resolved pointer to map " << callocMO->id << "\n";
-          llvm::errs() << "Got name from state: " << state.nextMapName << "\n";
-          state.addMapMemoryObjects(callocMO->id, fName);
-          state.printMapMemoryObjects();
-        } else {
-          assert(0 && "Could not find object from calloc");
-        }
+            && gep->getName().str() == "values_present"))
+        && f->getName().str() == "calloc") {
+      llvm::errs() << "called calloc ";
+      i->dump();
+      ObjectPair callocOP;
+      bool callocResolveSuccess;
+      if (state.addressSpace.resolveOne(state, solver.get(), value, callocOP, callocResolveSuccess)) {
+        const MemoryObject *callocMO = callocOP.first;
+        llvm::errs() << "Successfully resolved pointer to map " << callocMO->id << "\n";
+        llvm::errs() << "Got name from state: " << state.nextMapName << "\n";
+        state.addMapMemoryObjects(callocMO->id, fName);
+        state.printMapMemoryObjects();
+      } else {
+        assert(0 && "Could not find object from calloc");
       }
     }
   }
 
   if (fName == "array_allocate" && firstOperand == i->getFunction()->getArg(2)) {
+    if (ConstantExpr *ce = dyn_cast<ConstantExpr>(value)) {
+      state.nextValueSize = ce->getZExtValue();
+    } else {
+      state.nextValueSize = 0;
+    }
+  }
+
+  if (fName == "map_allocate" && firstOperand == i->getFunction()->getArg(4)) {
     if (ConstantExpr *ce = dyn_cast<ConstantExpr>(value)) {
       state.nextValueSize = ce->getZExtValue();
     } else {
@@ -4902,15 +4924,6 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
 
 void Executor::handlePacketDataStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset, unsigned bytes) {
   if (state.getXDPMemoryObjectID() != 0 && state.getXDPMemoryObjectID() == mo->id) {
-    llvm::errs() << "---- Instruction ";
-    i->dump();
-    llvm::errs() << "Write to offset ";
-    offset->dump();
-    llvm::errs() << "Memory objects equal? " << (state.getXDPMemoryObjectID() == mo->id) << "\n";
-    llvm::errs() << "This memory object id " << mo->id << "\n";
-    std::string xdpMemObj = std::to_string(state.getXDPMemoryObjectID());
-    llvm::errs() << "State's memory object id " << xdpMemObj << "\n";
-    llvm::errs() << "-----\n";
     for (std::string accessedStr : formatPacketOffsetName(state, offset, bytes)) {
       state.addWrite(accessedStr);
     }
@@ -4919,15 +4932,6 @@ void Executor::handlePacketDataStore(ExecutionState &state, llvm::Instruction *i
 
 void Executor::handlePacketDataLoad(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset, unsigned bytes) {
   if (state.getXDPMemoryObjectID() != 0 && state.getXDPMemoryObjectID() == mo->id) {
-    llvm::errs() << "---- Instruction ";
-    i->dump();
-    llvm::errs() << "Read from offset ";
-    offset->dump();
-    llvm::errs() << "Memory objects equal? " << (state.getXDPMemoryObjectID() == mo->id) << "\n";
-    llvm::errs() << "This memory object id " << mo->id << "\n";
-    std::string xdpMemObj = std::to_string(state.getXDPMemoryObjectID());
-    llvm::errs() << "State's memory object id " << xdpMemObj << "\n";
-    llvm::errs() << "-----\n";
     for (std::string accessedStr : formatPacketOffsetName(state, offset, bytes)) {
       state.addRead(accessedStr);
     }

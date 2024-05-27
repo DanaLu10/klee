@@ -220,7 +220,7 @@ std::vector<llvm::CallBase*> ExecutionState::findOriginalMapCall(llvm::Value *va
 }
 
 void ExecutionState::createNewMapReturn(llvm::CallBase *val, const InstructionInfo *kiInfo, 
-    std::string functionName, std::string mapName, std::string keyVal) {
+    std::string functionName, std::string mapName, std::string keyVal, std::string value) {
   std::unordered_set<const llvm::Value*> newSet;
   CallInfo info;
   newSet.insert(val);
@@ -229,7 +229,8 @@ void ExecutionState::createNewMapReturn(llvm::CallBase *val, const InstructionIn
   info.sourceColumn = kiInfo->column;
   info.sourceFile = kiInfo->file;
   info.functionName = functionName;
-  info.keyName = keyVal;
+  info.key = keyVal;
+  info.value = value;
   info.mapName = mapName;
   referencesToMapReturn.insert(std::make_pair(val, info));
   // llvm::errs() << "Created new entry for instruction ";
@@ -275,24 +276,37 @@ void ExecutionState::removeMapReference(llvm::Value *val) {
 }
 
 // add a map correlation between source map and head map
-void ExecutionState::addMapCorrelation(llvm::CallBase *sourceCall, llvm::CallBase *destCall) {
-  correlatedMaps.push_back(std::make_pair(sourceCall, destCall));
+void ExecutionState::addMapCorrelation(llvm::CallBase *sourceCall, llvm::CallBase *destCall, std::string arg) {
+  correlatedMaps.insert(std::make_pair(std::make_pair(sourceCall, destCall), arg));
 }
 
-std::vector<std::string> ExecutionState::formatMapCorrelations() {
-  std::vector<std::string> mapInfo;
+std::set<std::string> ExecutionState::formatMapCorrelations() {
+  std::set<std::string> mapInfo;
 
   for (auto &c : correlatedMaps) {
-    llvm::CallBase *sourceCall = c.first;
-    llvm::CallBase *destCall = c.second;
+    llvm::CallBase *sourceCall = c.first.first;
+    llvm::CallBase *destCall = c.first.second;
     CallInfo sourceInfo = referencesToMapReturn.find(sourceCall)->second;
     CallInfo destInfo = referencesToMapReturn.find(destCall)->second;
-
-    std::string newInfo = sourceInfo.sourceFile + "(" + std::to_string(sourceInfo.sourceLine) + "," + std::to_string(sourceInfo.sourceColumn)
-      + ")-" + sourceInfo.functionName + "(" + sourceInfo.mapName + "," + sourceInfo.keyName + ")->" 
-      + destInfo.sourceFile + "(" + std::to_string(destInfo.sourceLine) + "," + std::to_string(destInfo.sourceColumn) + ")-"
-      + destInfo.functionName + "(" + destInfo.mapName + "," + destInfo.keyName + ")";
-    mapInfo.push_back(newInfo);
+    std::stringstream newInfo;
+    newInfo << sourceInfo.sourceFile 
+            << "(" << std::to_string(sourceInfo.sourceLine)
+            << "," << std::to_string(sourceInfo.sourceColumn) << "):" 
+            << sourceInfo.functionName << "(" 
+            << sourceInfo.mapName << "," 
+            << sourceInfo.key << ")->" 
+            << destInfo.sourceFile 
+            << "(" << std::to_string(destInfo.sourceLine) 
+            << "," << std::to_string(destInfo.sourceColumn) << "):"
+            << destInfo.functionName << "(" << destInfo.mapName << ",";
+    if (c.second == "key") {
+      newInfo << "correlation:" << destInfo.key << "," << destInfo.value << ")";
+    } else if (c.second == "value") {
+      newInfo << destInfo.key << "," << "correlation:" << destInfo.value << ")";
+    } else {
+        newInfo << destInfo.key << ")";
+    }
+    mapInfo.insert(newInfo.str());
   }
 
   return mapInfo;
@@ -303,8 +317,6 @@ void ExecutionState::addNewMapLookup(llvm::Value *val, std::string repr) {
   std::unordered_set<const llvm::Value*> newSet;
   newSet.insert(val);
   mapLookupReturns.insert(std::make_pair(val, newSet));
-  // llvm::errs() << "Lookup: Created new entry for instruction ";
-  // val->dump();
 }
 
 bool ExecutionState::addIfMapLookupRef(llvm::Value *op, llvm::Value *val) {
@@ -341,6 +353,7 @@ void ExecutionState::addMapMemoryObjects(unsigned int id, std::string allocateFu
   } else if (allocateFunctionName == "map_allocate") {
     mapInfo.mapType = MapType::Map;
     mapInfo.keySize = nextKeySize;
+    mapInfo.valueSize = nextValueSize;
   } else if (allocateFunctionName == "map_of_map_allocate") {
     mapInfo.mapType = MapType::MapOfMap;
   }

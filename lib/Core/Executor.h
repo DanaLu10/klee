@@ -328,6 +328,8 @@ private:
   void handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<Expr> value);
   void handleMapStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset);
   std::string getMapKeyString(ref<Expr> key, unsigned int size);
+  unsigned getMapArgSize(llvm::Value *v);
+  std::string formatMapName(std::string name);
 
   // Handle finding the packet data
   void handlePacketDataInit(ExecutionState &state, llvm::Instruction *i, ref<Expr> value);

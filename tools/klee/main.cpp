@@ -342,7 +342,7 @@ private:
   unsigned m_pathsExplored; // number of partially explored and completed paths
   std::set<std::string> m_readSet; // write set
   std::set<std::string> m_writeSet; // read set
-  std::vector<std::string> m_mapCorrelation; // Correlations between maps
+  std::set<std::string> m_mapCorrelation; // Correlations between maps
   std::set<std::string> m_readWriteOverlap;
 
   // used for writing .ktest files
@@ -363,7 +363,7 @@ public:
   unsigned getNumPathsExplored() { return m_pathsExplored; }
   std::set<std::string> getReadSet() { return m_readSet; }
   std::set<std::string> getWriteSet() { return m_writeSet; }
-  std::vector<std::string> getCorrelatedMaps() { return m_mapCorrelation; }
+  std::set<std::string> getCorrelatedMaps() { return m_mapCorrelation; }
   std::set<std::string> getReadWriteOverlap() { return m_readWriteOverlap; }
   void incPathsCompleted() { ++m_pathsCompleted; }
   void incPathsExplored(std::uint32_t num = 1) {
@@ -372,8 +372,8 @@ public:
     m_readSet.merge(newSet); }
   void addToWriteSet(std::set<std::string> newSet) {
     m_writeSet.merge(newSet); }
-  void addToMapCorrelation(std::vector<std::string> newInfo) {
-    m_mapCorrelation.insert(m_mapCorrelation.end(), newInfo.begin(), newInfo.end()); }
+  void addToMapCorrelation(std::set<std::string> newInfo) {
+    m_mapCorrelation.merge(newInfo); }
   void addToReadWriteOverlap(std::set<std::string> newSet) {
     m_readWriteOverlap.merge(newSet); }
 
@@ -1681,7 +1681,7 @@ int main(int argc, char **argv, char **envp) {
 
   if (MapCorrelation) {
     handler->getMapCorrelationStream() << "Map Correlations \n";
-    std::vector<std::string> correlatedMaps = handler->getCorrelatedMaps();
+    std::set<std::string> correlatedMaps = handler->getCorrelatedMaps();
     
     for (auto const& correlation : correlatedMaps) {
       handler->getMapCorrelationStream() << correlation << "\n";
