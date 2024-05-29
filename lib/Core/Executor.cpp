@@ -2387,12 +2387,6 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
   }
   case Instruction::Br: {
     BranchInst *bi = cast<BranchInst>(i);
-    if (state.addIfReferencetoMapReturn(bi->getOperand(0), bi)) {
-      state.addBranchOnMapReturn(bi, ki->info);
-      Value *condition = bi->getCondition();
-      llvm::errs() << "********** Condition that branch on";
-      condition->dump();
-    }
     if (bi->isUnconditional()) {
       transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), state);
     } else {
@@ -2411,10 +2405,18 @@ void Executor::executeInstruction(ExecutionState &state, KInstruction *ki) {
       if (statsTracker && state.stack.back().kf->trackCoverage)
         statsTracker->markBranchVisited(branches.first, branches.second);
 
-      if (branches.first)
+      if (branches.first) {
+        if (branches.first->addIfReferencetoMapReturn(bi->getOperand(0), bi)) {
+          branches.first->addBranchOnMapReturn(bi, ki->info, cond);
+        }
         transferToBasicBlock(bi->getSuccessor(0), bi->getParent(), *branches.first);
-      if (branches.second)
+      }
+      if (branches.second) {
+        if (branches.second->addIfReferencetoMapReturn(bi->getOperand(0), bi)) {
+          branches.second->addBranchOnMapReturn(bi, ki->info, Expr::createIsZero(cond));
+        }
         transferToBasicBlock(bi->getSuccessor(1), bi->getParent(), *branches.second);
+      }
     }
     break;
   }
@@ -4172,6 +4174,9 @@ void Executor::terminateStateOnError(ExecutionState &state,
     } else {
       msg << "No map info\n";
     }
+    std::string result;
+    getConstraintLog(state, result, KQUERY);
+    msg << "\nConstraints that lead to this error: \n" << result << "\n";
 
     const std::string ext = terminationTypeFileExtension(terminationType);
     // use user provided suffix from klee_report_error()
@@ -4751,7 +4756,7 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
       llvm::errs() << "Found key to call... " << key << "\n";
       state.addWrite("map:" + mapInfo.mapName + "." + key);
     } else {
-      std::vector<llvm::CallBase*> references;
+      std::vector<llvm::Value*> references;
       if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
         references = state.findOriginalMapCall(loadInst->getOperand(0));
       } else if (GetElementPtrInst *getElemPtr = dyn_cast<GetElementPtrInst>(secondOperand)) {
