@@ -131,9 +131,12 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     mapCallStrings(state.mapCallStrings),
     branchesOnMapReturnReference(state.branchesOnMapReturnReference),
     correlatedMaps(state.correlatedMaps),
+    xdpMoId(state.xdpMoId),
     nextMapName(state.nextMapName),
     nextMapKey(state.nextMapKey),
     nextMapSize(state.nextMapSize),
+    nextKeySize(state.nextKeySize),
+    nextValueSize(state.nextValueSize),
     generateMode(state.generateMode),
     readWriteOverlap(state.readWriteOverlap) {
   for (const auto &cur_mergehandler: openMergeStack)

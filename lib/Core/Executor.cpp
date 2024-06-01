@@ -1744,7 +1744,6 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
         assert(0 && "Error: case for argument of this type not implemented yet.");
       }
     }
-    llvm::errs() << "Got key size of " << std::to_string(keySize) << "\n";
 
     ref<Expr> lookupKey = arguments[1];
     
@@ -4706,7 +4705,7 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
       const MemoryObject *lookupMO = lookupOP.first;
       if (state.isMapMemoryObject(lookupMO->id)) {
-        llvm::errs() << "Found a read...\n";
+        llvm::errs() << "Found a map access...\n";
         i->dump();
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
         if (i->getFunction()->getName().str() == "map_update_elem" || i->getFunction()->getName().str() ==  "array_update_elem") {
@@ -4730,14 +4729,10 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
       const MemoryObject *lookupMO = lookupOP.first;
       assert(lookupMO);
       if (state.isMapMemoryObject(lookupMO->id)) {
-        llvm::errs() << "------- Found a read...\n";
-        i->dump();
         ref<Expr> offset = lookupMO->getOffsetExpr(value);
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
         if (mapInfo.mapType == MapType::Array) {
           std::string keyName = getMapKeyString(offset, mapInfo.valueSize);
-          llvm::errs() << "Offset was " << keyName << "\n";
-          offset->dump();
           state.addRead("map:" + mapInfo.mapName + "." + keyName);
         }
       }
@@ -4834,7 +4829,6 @@ std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
   } else {
     keyName = "sym";
   }
-  llvm::errs() << "Key found was " << keyName;
   return keyName;
 }
 
@@ -4928,6 +4922,10 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
 }
 
 void Executor::handlePacketDataStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset, unsigned bytes) {
+  if (i->getFunction()->getName().str() == "bpf_xdp_adjust_head" && i->getOperand(1)->getName().str() == "data") {
+    llvm::errs() << "======= Got to bpf_xdp_adjust_head\n";
+    llvm::errs() << "Size of bytes to write: " << std::to_string(bytes) << "\n";
+  }
   if (state.getXDPMemoryObjectID() != 0 && state.getXDPMemoryObjectID() == mo->id) {
     for (std::string accessedStr : formatPacketOffsetName(state, offset, bytes)) {
       state.addWrite(accessedStr);
