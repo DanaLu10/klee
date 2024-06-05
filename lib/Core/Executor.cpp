@@ -3999,8 +3999,8 @@ void Executor::terminateState(ExecutionState &state,
   }
 
   interpreterHandler->incPathsExplored();
-  interpreterHandler->addToReadSet(state.readSet);
-  interpreterHandler->addToWriteSet(state.writeSet);
+  interpreterHandler->addToReadSet(state.getReadSet());
+  interpreterHandler->addToWriteSet(state.getWriteSet());
   interpreterHandler->addToMapCorrelation(state.formatMapCorrelations());
   interpreterHandler->addToReadWriteOverlap(state.readWriteOverlap);
   executionTree->setTerminationType(state, reason);
@@ -4709,9 +4709,10 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
         i->dump();
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
         if (i->getFunction()->getName().str() == "map_update_elem" || i->getFunction()->getName().str() ==  "array_update_elem") {
-          state.addWrite("map:" + mapInfo.mapName + "." + state.nextMapKey);
+          state.addWrite(mapInfo.mapName, state.nextMapKey, mapInfo.keySize);
         } else {
-          state.addRead("map:" + mapInfo.mapName + "." + state.nextMapKey);
+          llvm::errs() << "array map lookup\n";
+          state.addRead(mapInfo.mapName, state.nextMapKey, mapInfo.keySize);
         }
       }
     }
@@ -4733,7 +4734,7 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
         if (mapInfo.mapType == MapType::Array) {
           std::string keyName = getMapKeyString(offset, mapInfo.valueSize);
-          state.addRead("map:" + mapInfo.mapName + "." + keyName);
+          state.addRead(mapInfo.mapName, keyName, mapInfo.keySize);
         }
       }
     }
@@ -4749,7 +4750,7 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
     if (mapInfo.mapType == MapType::Array) {
       std::string key = getMapKeyString(offset, state.getMapInfo(mo->id).valueSize);
       llvm::errs() << "Found key to call... " << key << "\n";
-      state.addWrite("map:" + mapInfo.mapName + "." + key);
+      state.addWrite(mapInfo.mapName, key, mapInfo.keySize);
     } else {
       std::vector<llvm::Value*> references;
       if (LoadInst *loadInst = dyn_cast<LoadInst>(secondOperand)) {
@@ -4764,7 +4765,7 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
       std::string key = state.getMapCallKey(val);
       if (key != "") {
         llvm::errs() << "Found key to call... " << key << "\n";
-        state.addWrite("map:" + mapInfo.mapName + "." + key);
+        state.addWrite(mapInfo.mapName, key, mapInfo.keySize);
       }
     }
   } else if (i->getFunction()->getName().str() == "memcpy" && state.isMapMemoryObject(mo->id)) {
@@ -4892,6 +4893,7 @@ void Executor::handleMapInit(ExecutionState &state, llvm::Instruction *i, ref<Ex
   if (fName == "array_allocate" && firstOperand == i->getFunction()->getArg(2)) {
     if (ConstantExpr *ce = dyn_cast<ConstantExpr>(value)) {
       state.nextValueSize = ce->getZExtValue();
+      state.nextKeySize = sizeof(unsigned int);
     } else {
       state.nextValueSize = 0;
     }

@@ -301,11 +301,17 @@ public:
   using base_mo_t = std::map<uint64_t, std::set<ref<Expr>>>;
   base_mo_t base_mos;
 
-  /// @brief Read set of path.
-  std::set<std::string> readSet;
+  /// @brief Packet read set of path.
+  std::set<std::string> packetRead;
 
-  /// @brief Write set of path.
-  std::set<std::string> writeSet;
+  /// @brief Packet write of path.
+  std::set<std::string> packetWrite;
+
+  /// @brief Map read set of path.
+  std::unordered_map<std::string, std::set<std::string>> mapRead;
+
+  /// @brief Map write set of path.
+  std::unordered_map<std::string, std::set<std::string>> mapWrite;
 
   /// @brief Set of values which are part of the references to the arguments of a function
   std::unordered_set<llvm::Value*> argContents;
@@ -362,7 +368,12 @@ public:
   ExecutionState *branch();
 
   void addRead(std::string newRead);
+  void addRead(std::string mapName, std::string keyValue, unsigned int keySize);
   void addWrite(std::string newWrite);
+  void addWrite(std::string mapName, std::string keyValue, unsigned int keySize);
+
+  std::set<std::string> getReadSet();
+  std::set<std::string> getWriteSet();
 
   bool isFunctionForAnalysis(llvm::Function *func);
   bool isAddressValue(llvm::Value *val);
@@ -384,6 +395,8 @@ public:
 
   void addMapString(llvm::Value *val, std::string fName, std::string mapName, std::string key, const InstructionInfo *info);
   std::string getMapCallKey(llvm::Value *val);
+  bool findKey(std::set<std::string> keys, std::string keyValue, unsigned int keySize);
+  std::vector<std::string> findByteValues(std::string value, unsigned int keySize);
 
   void addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info, ref<Expr> cond);
   std::string formatBranchMaps();

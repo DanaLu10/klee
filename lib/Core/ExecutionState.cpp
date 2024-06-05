@@ -121,8 +121,12 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     forkDisabled(state.forkDisabled),
     base_addrs(state.base_addrs),
     base_mos(state.base_mos),
-    readSet(state.readSet),
-    writeSet(state.writeSet),
+    // readSet(state.readSet),
+    // writeSet(state.writeSet),
+    packetRead(state.packetRead),
+    packetWrite(state.packetWrite),
+    mapRead(state.mapRead),
+    mapWrite(state.mapWrite),
     argContents(state.argContents),
     mapLookupString(state.mapLookupString),
     mapLookupReturns(state.mapLookupReturns),
@@ -154,24 +158,164 @@ ExecutionState *ExecutionState::branch() {
   return falseState;
 }
 
+std::vector<std::string> ExecutionState::findByteValues(std::string value, unsigned int keySize) {
+  std::vector<std::string> bytes;
+  if (value.rfind("b0", 0) != 0) {
+    int valueInt = std::stoi(value);
+    std::stringstream valueInHex;
+    valueInHex << std::setfill('0') 
+               << std::setw(keySize * 2) 
+               << std::hex 
+               << valueInt;
+    std::string valueHex = valueInHex.str();
+    std::string nextHex;
+    std::stringstream nextBytes;
+    for (std::size_t i = 0; i < valueHex.size(); i = i + 2) {
+      nextHex = valueHex.substr(i, 2);
+      nextBytes << std::hex << nextHex;
+      bytes.push_back(nextBytes.str());
+      nextBytes.str(std::string());
+    }
+    return bytes;
+  }
+  bool next = false;
+  std::stringstream nextStr;
+  for (char &c : value) {
+    if (c == '(') {
+      next = true;
+    } else if (c == ')') {
+      bytes.push_back(nextStr.str());
+      nextStr.str(std::string());
+      next = false;
+    }
+
+    if (next) {
+      nextStr << c;
+    }
+  }
+  return bytes;
+}
+
+bool ExecutionState::findKey(std::set<std::string> keys, std::string keyValue, unsigned int keySize) {
+  std::vector<std::string> keyInBytes = findByteValues(keyValue, keySize);
+  bool found;
+  for (auto &k : keys) {
+    std::vector<std::string> kInBytes = findByteValues(k, keySize);
+    assert(kInBytes.size() == keyInBytes.size());
+
+    found = true;
+    for (std::size_t i = 0; i < kInBytes.size(); i++) {
+      if (kInBytes[i] != "sym" && keyInBytes[i] != "sym" && kInBytes[i] != keyInBytes[i]) {
+        found = false;
+        break;
+      }
+    }
+
+    if (found) {
+      return true;
+    }
+    
+  }
+  return false;
+}
+
 void ExecutionState::addRead(std::string newRead) {
   if (generateMode) {
-    readSet.insert(newRead);
+    packetRead.insert(newRead);
   } else {
-    if (writeSet.find(newRead) != writeSet.end()) {
+    if (packetWrite.find(newRead) != packetWrite.end()) {
       readWriteOverlap.insert(newRead);
+    }
+  }
+}
+
+void ExecutionState::addRead(std::string mapName, std::string keyValue, unsigned int keySize) {
+  if (generateMode) {
+    auto it = mapRead.find(mapName);
+    if (it != mapRead.end()) {
+      it->second.insert(keyValue);
+    } else {
+      std::set<std::string> newSet;
+      newSet.insert(keyValue);
+      mapRead.insert(std::make_pair(mapName, newSet));
+    }
+    llvm::errs() << "Inserted key with " << keyValue << " into read set...\n";
+  } else {
+    auto it = mapWrite.find(mapName);
+    if (it == mapWrite.end()) {
+      return;
+    }
+    std::set<std::string> keys = it->second;
+    if (findKey(keys, keyValue, keySize)) {
+      readWriteOverlap.insert("map:" + mapName + "." + keyValue);
     }
   }
 }
 
 void ExecutionState::addWrite(std::string newWrite) {
   if (generateMode) {
-    writeSet.insert(newWrite);
+    packetWrite.insert(newWrite);
   } else {
-    if (writeSet.find(newWrite) != writeSet.end() || readSet.find(newWrite) != readSet.end()) {
+    if (packetWrite.find(newWrite) != packetWrite.end() || packetRead.find(newWrite) != packetRead.end()) {
       readWriteOverlap.insert(newWrite);
     }
   }
+}
+
+void ExecutionState::addWrite(std::string mapName, std::string keyValue, unsigned int keySize) {
+  if (generateMode) {
+    auto it = mapWrite.find(mapName);
+    if (it != mapWrite.end()) {
+      it->second.insert(keyValue);
+    } else {
+      std::set<std::string> newSet;
+      newSet.insert(keyValue);
+      mapWrite.insert(std::make_pair(mapName, newSet));
+    }
+  } else {
+    auto writeIt = mapWrite.find(mapName);
+    auto readIt = mapRead.find(mapName);
+    if (writeIt == mapWrite.end() && readIt == mapRead.end()) {
+      return;
+    }
+    std::set<std::string> keys = readIt->second;
+    if (findKey(keys, keyValue, keySize)) {
+      readWriteOverlap.insert("map:" + mapName + "." + keyValue);
+      return;
+    }
+    keys = writeIt->second;
+    if (findKey(keys, keyValue, keySize)) {
+      readWriteOverlap.insert("map:" + mapName + "." + keyValue);
+    }
+  }
+}
+
+std::set<std::string> ExecutionState::getReadSet() {
+  std::set<std::string> readSet;
+  std::string mr;
+  for (auto &it : mapRead) {
+    for (auto &setIt : it.second) {
+      mr = "map:" + it.first + "." + setIt;
+      readSet.insert(mr);
+    }
+  }
+
+  readSet.merge(packetRead);
+  return readSet;
+}
+
+std::set<std::string> ExecutionState::getWriteSet() {
+  std::set<std::string> writeSet;
+  std::string mw;
+  for (auto &it : mapWrite) {
+    for (auto &setIt : it.second) {
+      mw = "map:" + it.first + "." + setIt;
+      writeSet.insert(mw);
+    }
+  }
+
+  writeSet.merge(packetWrite);
+  return writeSet;
 }
 
 bool ExecutionState::isFunctionForAnalysis(llvm::Function *func) {
