@@ -1747,7 +1747,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
 
     ref<Expr> lookupKey = arguments[1];
     
-    if (fName != "bpf_redirect_map" && isa<ConstantExpr>(lookupKey)) {
+    if (isa<ConstantExpr>(lookupKey)) {
       // for bpf_map_lookup_elem, the lookup key is a pointer to a value
       // so we need to get the value stored in the pointer
       ConstantExpr *ce = cast<ConstantExpr>(lookupKey);
@@ -1756,84 +1756,41 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       state.addressSpace.resolveOne(state, solver.get(), ce, op, success);
       const MemoryObject *mo = op.first;
       const ObjectState *osarg = op.second;
-      assert(osarg && "Error: Resolving not able to find object not handled. Check if function arguments were initialised");
+      // assert(osarg && "Error: Resolving not able to find object not handled. Check if function arguments were initialised");
 
-      // read the pointer
-      ref<Expr> offsetToArg = mo->getOffsetExpr(ce);
-      ref<Expr> readValue = osarg->read(offsetToArg, keySize);
-
-      if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(readValue)) {
-        std::string valueStr;
-        valueCE->toString(valueStr, 10);
-        keyName = valueStr;
-      } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(readValue)) {
-        // Parts of this read contains symbolic bytes
-        std::string valueStr;
-        int currByte = 0;
-        ref<Expr> currLeft;
-        ConcatExpr *currRight;
-        currRight = valueCE;
-        llvm::errs() << "got value of ";
-        readValue->dump();
+      if (osarg) {
+        // read the pointer
+        ref<ConstantExpr> offsetToArg = cast<ConstantExpr>(mo->getOffsetExpr(ce));
+        unsigned int offset = offsetToArg->getZExtValue();
         osarg->print();
-        // Iterate over the concatenations
-        do {
-          currLeft = currRight->getLeft();
-          if (ConstantExpr *leftCE = dyn_cast<ConstantExpr>(currLeft)) {
-            std::string currLeftStr;
-            leftCE->toString(currLeftStr, 10);
-            valueStr += ("b" + std::to_string(currByte) + "(" + currLeftStr + ")_");
-          } else {
-            valueStr += ("b" + std::to_string(currByte) + "(sym)_");
-          }
-          currByte++;
-          // currLeft->dump();
-        } while ((currRight->getRight()->getKind() == Expr::Concat) && (currRight = dyn_cast<ConcatExpr>(currRight->getRight())));
-        // while there is more to read
+        ref<Expr> readValue = osarg->read(offsetToArg, keySize);
+        std::string valueStr;
 
-        if (ConstantExpr *lastCE = dyn_cast<ConstantExpr>(currRight->getRight())) {
-          std::string currLeftStr;
-          lastCE->toString(currLeftStr, 10);
-          valueStr += ("b" + std::to_string(currByte) + "(" + currLeftStr + ")_");
-        } else {
-          valueStr += ("b" + std::to_string(currByte) + "(sym)_");
+        unsigned int keySizeInBytes = keySize / 8;
+        for (unsigned int i = 0; i < keySizeInBytes; i++) {
+          ref<Expr> val = osarg->read8(offset + i);
+          if (ConstantExpr *valCE = dyn_cast<ConstantExpr>(val)) {
+            std::string currValStr;
+            valCE->toString(currValStr, 10);
+            valueStr += ("b" + std::to_string(i) + "(" + currValStr + ")_");
+          } else {
+            valueStr += ("b" + std::to_string(i) + "(sym)_");
+          }
         }
         keyName = valueStr;
       } else {
-        keyName = "sym";
+        std::string valueStr;
+        for (unsigned int i = 0; i < keySize / 8; i++) {
+          valueStr += ("b" + std::to_string(i) + "(sym)_");
+        }
+        keyName = valueStr;
       }
     } else if (fName == "bpf_redirect_map") {
-      if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(lookupKey)) {
-        std::string valueStr;
-        valueCE->toString(valueStr, 10);
-        // llvm::errs() << "\nKey is already a value, not a pointer, value is " << valueStr << "\n"; 
-        keyName = valueStr;
-      } else if (CastExpr *castExpr = dyn_cast<CastExpr>(lookupKey)) {
-        ref<Expr> kid = castExpr->getKid(0);
-        std::string valueStr;
-        switch(kid->getKind()) {
-          case (Expr::Constant): {
-            ConstantExpr *constantExpr = cast<ConstantExpr>(kid);
-            constantExpr->toString(valueStr, 10);
-            keyName = valueStr;
-            break;
-          }
-          case (Expr::Read): {
-            keyName = "sym";
-            break;
-          }
-          default: {
-            llvm::errs() << "Not handled type of kid ";
-            Expr::printKind(llvm::errs(), kid->getKind());
-            llvm::errs() << "\n";
-            kid->dump();
-            assert(0 && "Error: handling of kid type not implemented");
-            break;
-          }
-        }
-      } else {
-        assert(0 && "Error: handling non constant or cast type not handled");
+      std::string valueStr;
+      for (unsigned int i = 0; i < keySize / 8; i++) {
+        valueStr += ("b" + std::to_string(i) + "(sym)_");
       }
+      keyName = valueStr;
     } else {
       llvm::errs() << "Not handled type ";
       Expr::printKind(llvm::errs(), lookupKey->getKind());
@@ -1841,6 +1798,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       lookupKey->dump();
       assert(0 && "Error: handling of not being able to cast to ConstantExpr not implemented");
     }
+    llvm::errs() << "Map helper function with key name " << keyName << "\n";
     state.nextMapKey = keyName;
     state.addMapString(i, fName, name, keyName, ki->info);
     if (fName == "bpf_map_update_elem") {
@@ -1853,9 +1811,7 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       const ObjectState *valueOs = valueOp.second;
       assert(valueOs && "Error: Resolving not able to find object not handled. Check if function arguments were initialised");
       ref<Expr> offsetToValue = valueMo->getOffsetExpr(valueCe);
-      ref<Expr> value = valueOs->read(offsetToValue, valSize);
-
-      std::string valName = getMapKeyString(value, valSize);
+      std::string valName = getMapKeyString(offsetToValue, valSize, valueOs);
       state.createNewMapReturn(callB, ki->info, fName, name, keyName, valName);
       // If there is a dependency
       for (auto &sourceCall : state.findOriginalMapCall(callB->getOperand(1))) {
@@ -4741,9 +4697,9 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
   }
 }
 
-void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const MemoryObject *mo, ref<Expr> offset) {
+void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, ObjectPair op, ref<Expr> offset) {
   llvm::Value *secondOperand = i->getOperand(1);
-
+  const MemoryObject *mo = op.first;
   if (i->getFunction()->getName().str() != "memcpy" && state.isMapMemoryObject(mo->id)) {
     llvm::errs() << "================ Found a write to map object " << std::to_string(mo->id) << "\n";
     MapInfo mapInfo = state.getMapInfo(mo->id);
@@ -4777,60 +4733,54 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, const
 
 }
 
-std::string Executor::getMapKeyString(ref<Expr> key, unsigned int size) {
-  std::string keyName;
-  if (ConstantExpr *valueCE = dyn_cast<ConstantExpr>(key)) {
-    unsigned int val = valueCE->getZExtValue() / size;
-    keyName = std::to_string(val);
-  } else if (CastExpr *castExpr = dyn_cast<CastExpr>(key)) {
-    ref<Expr> kid = castExpr->getKid(0);
-    std::string valueStr;
-    switch(kid->getKind()) {
-      case (Expr::Constant): {
-        ConstantExpr *constantExpr = cast<ConstantExpr>(kid);
-        constantExpr->toString(valueStr, 10);
-        keyName = valueStr;
-        break;
-      }
-      default: {
-        keyName = "sym";
-        break;
-      }
+std::string Executor::getMapKeyString(ref<Expr> offset, unsigned int size) {
+  std::string valueStr;
+  if (ref<ConstantExpr> offsetToArg = dyn_cast<ConstantExpr>(offset) ) {
+    unsigned int off = offsetToArg->getZExtValue() / size;
+    std::stringstream valueInHex;
+      valueInHex << std::setfill('0') 
+                << std::setw(4 * 2) 
+                << std::hex 
+                << off;
+    std::string valueHex = valueInHex.str();
+    std::string nextHex;
+    unsigned int x;
+    assert(valueHex.size() == (size * 2));
+    for (std::size_t i = 0; i < size; i++) {
+      std::stringstream nextBytes;
+      nextHex = valueHex.substr(valueHex.size() - 2 * (i + 1), 2);
+      llvm::errs() << "nextHex: " << nextHex << "\n";
+      nextBytes << std::hex << nextHex;
+      nextBytes >> x;
+      valueStr += ("b" + std::to_string(i) + "(" + std::to_string(x) + ")_");
     }
-  } else if (ConcatExpr *valueCE = dyn_cast<ConcatExpr>(key)) {
-    // Parts of this read contains symbolic bytes
-    std::string valueStr;
-    int currByte = 0;
-    ref<Expr> currLeft;
-    ConcatExpr *currRight;
-    currRight = valueCE;
-
-    // Iterate over the concatenations
-    do {
-      currLeft = currRight->getLeft();
-      if (ConstantExpr *leftCE = dyn_cast<ConstantExpr>(currLeft)) {
-        std::string currLeftStr;
-        leftCE->toString(currLeftStr, 10);
-        valueStr += ("b" + std::to_string(currByte) + "(" + currLeftStr + ")_");
-      } else {
-        valueStr += ("b" + std::to_string(currByte) + "(sym)_");
-      }
-      currByte++;
-    } while ((currRight->getRight()->getKind() == Expr::Concat) && (currRight = dyn_cast<ConcatExpr>(currRight->getRight())));
-    // while there is more to read
-
-    if (ConstantExpr *lastCE = dyn_cast<ConstantExpr>(currRight->getRight())) {
-      std::string currLeftStr;
-      lastCE->toString(currLeftStr, 10);
-      valueStr += ("b" + std::to_string(currByte) + "(" + currLeftStr + ")_");
-    } else {
-      valueStr += ("b" + std::to_string(currByte) + "(sym)_");
-    }
-    keyName = valueStr;
   } else {
-    keyName = "sym";
+    valueStr = "b0(sym)_b1(sym)_b2(sym)_b3(sym)_";
   }
-  return keyName;
+
+  return valueStr;
+}
+
+std::string Executor::getMapKeyString(ref<Expr> offset, unsigned int size, const ObjectState *os) {
+  std::string valueStr;
+  if (ref<ConstantExpr> offsetToArg = dyn_cast<ConstantExpr>(offset) ) {
+    unsigned int off = offsetToArg->getZExtValue();
+    unsigned int keySizeInBytes = size / 8;
+    for (unsigned int i = 0; i < keySizeInBytes; i++) {
+      ref<Expr> val = os->read8(off + i);
+      if (ConstantExpr *valCE = dyn_cast<ConstantExpr>(val)) {
+        std::string currValStr;
+        valCE->toString(currValStr, 10);
+        valueStr += ("b" + std::to_string(i) + "(" + currValStr + ")_");
+      } else {
+        valueStr += ("b" + std::to_string(i) + "(sym)_");
+      }
+    }
+  } else {
+    valueStr = "b0(sym)_b1(sym)_b2(sym)_b3(sym)_";
+  }
+  llvm::errs() << "----- got key name of " << valueStr << "\n";
+  return valueStr;
 }
 
 std::string Executor::formatMapName(std::string name) {
@@ -5069,7 +5019,7 @@ void Executor::executeMemoryOperation(ExecutionState &state,
             handlePacketDataInit(state, i, value);
             handleMapInit(state, i, value);
             handleMapLookupAndUpdate(state, i, value);    
-            handleMapStore(state, i, mo, offset);        
+            handleMapStore(state, i, op, offset);        
             handlePacketDataStore(state, i, mo, offset, bytes);
             
             if (state.isReferencetoMapReturn(secondOperand) && !state.isReferencetoMapReturn(firstOperand)) {

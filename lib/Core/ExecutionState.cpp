@@ -160,8 +160,8 @@ ExecutionState *ExecutionState::branch() {
 
 std::vector<std::string> ExecutionState::findByteValues(std::string value, unsigned int keySize) {
   std::vector<std::string> bytes;
-  if (value.rfind("b0", 0) != 0) {
-    int valueInt = std::stoi(value);
+  if (value.rfind("b0", 0) != 0 && value != "sym") {
+    long long valueInt = std::stoll(value);
     std::stringstream valueInHex;
     valueInHex << std::setfill('0') 
                << std::setw(keySize * 2) 
@@ -170,11 +170,17 @@ std::vector<std::string> ExecutionState::findByteValues(std::string value, unsig
     std::string valueHex = valueInHex.str();
     std::string nextHex;
     std::stringstream nextBytes;
+    assert(valueHex.size() == (keySize * 2));
     for (std::size_t i = 0; i < valueHex.size(); i = i + 2) {
       nextHex = valueHex.substr(i, 2);
       nextBytes << std::hex << nextHex;
       bytes.push_back(nextBytes.str());
       nextBytes.str(std::string());
+    }
+    return bytes;
+  } else if (value == "sym") {
+    for (unsigned int i = 0; i < keySize; i++) {
+      bytes.push_back("sym");
     }
     return bytes;
   }
@@ -183,6 +189,7 @@ std::vector<std::string> ExecutionState::findByteValues(std::string value, unsig
   for (char &c : value) {
     if (c == '(') {
       next = true;
+      continue;
     } else if (c == ')') {
       bytes.push_back(nextStr.str());
       nextStr.str(std::string());
@@ -278,14 +285,19 @@ void ExecutionState::addWrite(std::string mapName, std::string keyValue, unsigne
     if (writeIt == mapWrite.end() && readIt == mapRead.end()) {
       return;
     }
-    std::set<std::string> keys = readIt->second;
-    if (findKey(keys, keyValue, keySize)) {
-      readWriteOverlap.insert("map:" + mapName + "." + keyValue);
-      return;
+    std::set<std::string> keys;
+    if (readIt != mapRead.end()) {
+      keys = readIt->second;
+      if (findKey(keys, keyValue, keySize)) {
+        readWriteOverlap.insert("map:" + mapName + "." + keyValue);
+        return;
+      }
     }
-    keys = writeIt->second;
-    if (findKey(keys, keyValue, keySize)) {
-      readWriteOverlap.insert("map:" + mapName + "." + keyValue);
+    if (writeIt != mapWrite.end()) {
+      keys = writeIt->second;
+      if (findKey(keys, keyValue, keySize)) {
+        readWriteOverlap.insert("map:" + mapName + "." + keyValue);
+      }
     }
   }
 }
