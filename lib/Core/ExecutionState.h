@@ -308,10 +308,10 @@ public:
   std::set<std::string> packetWrite;
 
   /// @brief Map read set of path.
-  std::unordered_map<std::string, std::set<std::string>> mapRead;
+  std::unordered_map<std::string, std::set<std::pair<ref<Expr>, std::string>>> mapRead;
 
   /// @brief Map write set of path.
-  std::unordered_map<std::string, std::set<std::string>> mapWrite;
+  std::unordered_map<std::string, std::set<std::pair<ref<Expr>, std::string>>> mapWrite;
 
   /// @brief Set of values which are part of the references to the arguments of a function
   std::unordered_set<llvm::Value*> argContents;
@@ -323,13 +323,14 @@ public:
   std::unordered_map<llvm::Value*, std::unordered_set<const llvm::Value*>> mapLookupReturns;
 
   /// @brief Mapping from map helper function call to information on that call
-  std::unordered_map<llvm::Value*, CallInfo> referencesToMapReturn;
+  std::unordered_map<llvm::Value*, CallInfo> callInformation;
   
   /// @brief Map from the memory object ID of that map to the name of the map and size of the key
   std::unordered_map<unsigned int, MapInfo> mapMemoryObjects;
 
   /// @brief Mapping from calls to map helper functions to a string representation and call key
   std::unordered_map<llvm::Value*, std::pair<std::string, std::string>> mapCallStrings;
+  std::unordered_map<llvm::Value*, ref<Expr>> mapCallArgumentExpressions;
 
   /// @brief Set of calls to map helper functions which result in a branch
   std::set<BranchInfo> branchesOnMapReturnReference;
@@ -344,10 +345,11 @@ public:
   unsigned int nextMapSize;
   unsigned int nextKeySize;
   unsigned int nextValueSize;
+  ref<Expr> mapOperationKey;
 
   bool generateMode = true;
 
-  std::set<std::string> readWriteOverlap;
+  std::set<std::string> overlap;
 
 public:
 #ifdef KLEE_UNITTEST
@@ -367,10 +369,15 @@ public:
 
   ExecutionState *branch();
 
-  void addRead(std::string newRead);
-  void addRead(std::string mapName, std::string keyValue, unsigned int keySize);
-  void addWrite(std::string newWrite);
-  void addWrite(std::string mapName, std::string keyValue, unsigned int keySize);
+  void addPacketRead(std::string newRead);
+  void addMapRead(std::string mapName, ref<Expr> key, std::string keyName);
+  // void addRead(std::string mapName, std::string keyValue, unsigned int keySize);
+  void addPacketWrite(std::string newWrite);
+  void addMapWrite(std::string mapName, ref<Expr> key, std::string keyName);
+  // void addWrite(std::string mapName, std::string keyValue, unsigned int keySize);
+  std::set<std::pair<ref<Expr>, std::string>> getMapRead(std::string mapName);
+  std::set<std::pair<ref<Expr>, std::string>> getMapWrite(std::string mapName);
+  void addToOverlap(std::string mapName, std::string keyValue);
 
   std::set<std::string> getReadSet();
   std::set<std::string> getWriteSet();
@@ -393,10 +400,9 @@ public:
   void addNewMapLookup(llvm::Value *val, std::string repr);
   std::pair<bool, std::string> isMapLookupReturn(llvm::Value *val);
 
-  void addMapString(llvm::Value *val, std::string fName, std::string mapName, std::string key, const InstructionInfo *info);
+  void addMapString(llvm::Value *val, std::string fName, std::string mapName, std::string key, const InstructionInfo *info, ref<Expr> keyExpr);
   std::string getMapCallKey(llvm::Value *val);
-  bool findKey(std::set<std::string> keys, std::string keyValue, unsigned int keySize);
-  std::vector<std::string> findByteValues(std::string value, unsigned int keySize);
+  ref<Expr> getMapCallExpr(llvm::Value *val);
 
   void addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info, ref<Expr> cond);
   std::string formatBranchMaps();

@@ -130,9 +130,10 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     argContents(state.argContents),
     mapLookupString(state.mapLookupString),
     mapLookupReturns(state.mapLookupReturns),
-    referencesToMapReturn(state.referencesToMapReturn),
+    callInformation(state.callInformation),
     mapMemoryObjects(state.mapMemoryObjects),
     mapCallStrings(state.mapCallStrings),
+    mapCallArgumentExpressions(state.mapCallArgumentExpressions),
     branchesOnMapReturnReference(state.branchesOnMapReturnReference),
     correlatedMaps(state.correlatedMaps),
     xdpMoId(state.xdpMoId),
@@ -141,8 +142,9 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     nextMapSize(state.nextMapSize),
     nextKeySize(state.nextKeySize),
     nextValueSize(state.nextValueSize),
+    mapOperationKey(state.mapOperationKey),
     generateMode(state.generateMode),
-    readWriteOverlap(state.readWriteOverlap) {
+    overlap(state.overlap) {
   for (const auto &cur_mergehandler: openMergeStack)
     cur_mergehandler->addOpenState(this);
 }
@@ -158,147 +160,67 @@ ExecutionState *ExecutionState::branch() {
   return falseState;
 }
 
-std::vector<std::string> ExecutionState::findByteValues(std::string value, unsigned int keySize) {
-  std::vector<std::string> bytes;
-  if (value.rfind("b0", 0) != 0 && value != "sym") {
-    long long valueInt = std::stoll(value);
-    std::stringstream valueInHex;
-    valueInHex << std::setfill('0') 
-               << std::setw(keySize * 2) 
-               << std::hex 
-               << valueInt;
-    std::string valueHex = valueInHex.str();
-    std::string nextHex;
-    std::stringstream nextBytes;
-    assert(valueHex.size() == (keySize * 2));
-    for (std::size_t i = 0; i < valueHex.size(); i = i + 2) {
-      nextHex = valueHex.substr(i, 2);
-      nextBytes << std::hex << nextHex;
-      bytes.push_back(nextBytes.str());
-      nextBytes.str(std::string());
-    }
-    return bytes;
-  } else if (value == "sym") {
-    for (unsigned int i = 0; i < keySize; i++) {
-      bytes.push_back("sym");
-    }
-    return bytes;
-  }
-  bool next = false;
-  std::stringstream nextStr;
-  for (char &c : value) {
-    if (c == '(') {
-      next = true;
-      continue;
-    } else if (c == ')') {
-      bytes.push_back(nextStr.str());
-      nextStr.str(std::string());
-      next = false;
-    }
-
-    if (next) {
-      nextStr << c;
-    }
-  }
-  return bytes;
-}
-
-bool ExecutionState::findKey(std::set<std::string> keys, std::string keyValue, unsigned int keySize) {
-  std::vector<std::string> keyInBytes = findByteValues(keyValue, keySize);
-  bool found;
-  for (auto &k : keys) {
-    std::vector<std::string> kInBytes = findByteValues(k, keySize);
-    assert(kInBytes.size() == keyInBytes.size());
-
-    found = true;
-    for (std::size_t i = 0; i < kInBytes.size(); i++) {
-      if (kInBytes[i] != "sym" && keyInBytes[i] != "sym" && kInBytes[i] != keyInBytes[i]) {
-        found = false;
-        break;
-      }
-    }
-
-    if (found) {
-      return true;
-    }
-    
-  }
-  return false;
-}
-
-void ExecutionState::addRead(std::string newRead) {
+void ExecutionState::addPacketRead(std::string newRead) {
   if (generateMode) {
     packetRead.insert(newRead);
   } else {
     if (packetWrite.find(newRead) != packetWrite.end()) {
-      readWriteOverlap.insert(newRead);
+      overlap.insert(newRead);
     }
   }
 }
 
-void ExecutionState::addRead(std::string mapName, std::string keyValue, unsigned int keySize) {
-  if (generateMode) {
-    auto it = mapRead.find(mapName);
-    if (it != mapRead.end()) {
-      it->second.insert(keyValue);
-    } else {
-      std::set<std::string> newSet;
-      newSet.insert(keyValue);
-      mapRead.insert(std::make_pair(mapName, newSet));
-    }
-    llvm::errs() << "Inserted key with " << keyValue << " into read set...\n";
+void ExecutionState::addMapRead(std::string mapName, ref<Expr> key, std::string keyName) {
+  auto it = mapRead.find(mapName);
+  if (it != mapRead.end()) {
+    it->second.insert(std::make_pair(key, keyName));
   } else {
-    auto it = mapWrite.find(mapName);
-    if (it == mapWrite.end()) {
-      return;
-    }
-    std::set<std::string> keys = it->second;
-    if (findKey(keys, keyValue, keySize)) {
-      readWriteOverlap.insert("map:" + mapName + "." + keyValue);
-    }
+    std::set<std::pair<ref<Expr>, std::string>> newSet;
+    newSet.insert(std::make_pair(key, keyName));
+    mapRead.insert(std::make_pair(mapName, newSet));
   }
 }
 
-void ExecutionState::addWrite(std::string newWrite) {
+void ExecutionState::addToOverlap(std::string mapName, std::string keyValue) {
+  overlap.insert("map:" + mapName + "." + keyValue);
+}
+
+std::set<std::pair<ref<Expr>, std::string>> ExecutionState::getMapRead(std::string mapName) {
+  std::set<std::pair<ref<Expr>, std::string>> result;
+  auto it = mapRead.find(mapName);
+  if (it != mapRead.end()) {
+    result = it->second;
+  }
+  return result;
+}
+
+std::set<std::pair<ref<Expr>, std::string>> ExecutionState::getMapWrite(std::string mapName) {
+  std::set<std::pair<ref<Expr>, std::string>> result;
+  auto it = mapWrite.find(mapName);
+  if (it != mapWrite.end()) {
+    result = it->second;
+  }
+  return result;
+}
+
+void ExecutionState::addPacketWrite(std::string newWrite) {
   if (generateMode) {
     packetWrite.insert(newWrite);
   } else {
     if (packetWrite.find(newWrite) != packetWrite.end() || packetRead.find(newWrite) != packetRead.end()) {
-      readWriteOverlap.insert(newWrite);
+      overlap.insert(newWrite);
     }
   }
 }
 
-void ExecutionState::addWrite(std::string mapName, std::string keyValue, unsigned int keySize) {
-  if (generateMode) {
-    auto it = mapWrite.find(mapName);
-    if (it != mapWrite.end()) {
-      it->second.insert(keyValue);
-    } else {
-      std::set<std::string> newSet;
-      newSet.insert(keyValue);
-      mapWrite.insert(std::make_pair(mapName, newSet));
-    }
+void ExecutionState::addMapWrite(std::string mapName, ref<Expr> key, std::string keyName) {
+  auto it = mapWrite.find(mapName);
+  if (it != mapWrite.end()) {
+    it->second.insert(std::make_pair(key, keyName));
   } else {
-    auto writeIt = mapWrite.find(mapName);
-    auto readIt = mapRead.find(mapName);
-    if (writeIt == mapWrite.end() && readIt == mapRead.end()) {
-      return;
-    }
-    std::set<std::string> keys;
-    if (readIt != mapRead.end()) {
-      keys = readIt->second;
-      if (findKey(keys, keyValue, keySize)) {
-        readWriteOverlap.insert("map:" + mapName + "." + keyValue);
-        return;
-      }
-    }
-    if (writeIt != mapWrite.end()) {
-      keys = writeIt->second;
-      if (findKey(keys, keyValue, keySize)) {
-        readWriteOverlap.insert("map:" + mapName + "." + keyValue);
-      }
-    }
+    std::set<std::pair<ref<Expr>, std::string>> newSet;
+    newSet.insert(std::make_pair(key, keyName));
+    mapWrite.insert(std::make_pair(mapName, newSet));
   }
 }
 
@@ -307,7 +229,7 @@ std::set<std::string> ExecutionState::getReadSet() {
   std::string mr;
   for (auto &it : mapRead) {
     for (auto &setIt : it.second) {
-      mr = "map:" + it.first + "." + setIt;
+      mr = "map:" + it.first + "." + setIt.second;
       readSet.insert(mr);
     }
   }
@@ -321,7 +243,7 @@ std::set<std::string> ExecutionState::getWriteSet() {
   std::string mw;
   for (auto &it : mapWrite) {
     for (auto &setIt : it.second) {
-      mw = "map:" + it.first + "." + setIt;
+      mw = "map:" + it.first + "." + setIt.second;
       writeSet.insert(mw);
     }
   }
@@ -360,7 +282,7 @@ unsigned int ExecutionState::getXDPMemoryObjectID() {
 }
 
 bool ExecutionState::isReferencetoMapReturn(llvm::Value *val) {
-  for (const auto &c : referencesToMapReturn) {
+  for (const auto &c : callInformation) {
     if (c.second.references.find(val) != c.second.references.end()) {
       return true;
     }
@@ -370,7 +292,7 @@ bool ExecutionState::isReferencetoMapReturn(llvm::Value *val) {
 
 std::vector<llvm::Value*> ExecutionState::findOriginalMapCall(llvm::Value *val) {
   std::vector<llvm::Value*> mapReturns;
-  for (const auto &c : referencesToMapReturn) {
+  for (const auto &c : callInformation) {
     if (c.second.references.find(val) != c.second.references.end()) {
       mapReturns.push_back(c.first);
     }
@@ -391,14 +313,20 @@ void ExecutionState::createNewMapReturn(llvm::Value *val, const InstructionInfo 
   info.key = keyVal;
   info.value = value;
   info.mapName = mapName;
-  referencesToMapReturn.insert(std::make_pair(val, info));
-  // llvm::errs() << "Created new entry for instruction ";
-  // val->dump();
+  callInformation.insert(std::make_pair(val, info));
 }
 
-void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName, std::string key, const InstructionInfo *info) {
+void ExecutionState::addMapString(llvm::Value *val, std::string fName, std::string mapName, std::string key, 
+                                  const InstructionInfo *info, ref<Expr> keyExpr) {
   std::string mapStr = fName + " on map " + mapName + " on line: " + std::to_string(info->line) + ", column: " + std::to_string(info->column);
   mapCallStrings.insert(std::make_pair(val, std::make_pair(mapStr, key)));
+  mapCallArgumentExpressions.insert(std::make_pair(val, keyExpr));
+}
+
+ref<Expr> ExecutionState::getMapCallExpr(llvm::Value *val) {
+  auto key = mapCallArgumentExpressions.find(val);
+  assert(key != mapCallArgumentExpressions.end());
+  return key->second;
 }
 
 std::string ExecutionState::getMapCallKey(llvm::Value *val) {
@@ -411,7 +339,7 @@ std::string ExecutionState::getMapCallKey(llvm::Value *val) {
 
 void ExecutionState::printReferencesToMapReturnKeys() {
   llvm::errs() << "References to map return keys: {";
-  for (auto &c : referencesToMapReturn) {
+  for (auto &c : callInformation) {
     c.first->dump();
   }
   llvm::errs() << "}\n";
@@ -419,7 +347,7 @@ void ExecutionState::printReferencesToMapReturnKeys() {
 
 bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val) {
   bool added = false;
-  for (auto &c : referencesToMapReturn) {
+  for (auto &c : callInformation) {
     if (c.second.references.find(op) != c.second.references.end() || op == c.first) {
       c.second.references.insert(val);
       added = true;
@@ -429,7 +357,7 @@ bool ExecutionState::addIfReferencetoMapReturn(llvm::Value *op, llvm::Value *val
 }
 
 void ExecutionState::removeMapReference(llvm::Value *val) {
-  for (auto &c : referencesToMapReturn) {
+  for (auto &c : callInformation) {
     c.second.references.erase(val);
   }
 }
@@ -445,8 +373,8 @@ std::set<std::string> ExecutionState::formatMapCorrelations() {
   for (auto &c : correlatedMaps) {
     llvm::Value *sourceCall = c.first.first;
     llvm::Value *destCall = c.first.second;
-    CallInfo sourceInfo = referencesToMapReturn.find(sourceCall)->second;
-    CallInfo destInfo = referencesToMapReturn.find(destCall)->second;
+    CallInfo sourceInfo = callInformation.find(sourceCall)->second;
+    CallInfo destInfo = callInformation.find(destCall)->second;
     std::stringstream newInfo;
     newInfo << sourceInfo.sourceFile 
             << "(" << std::to_string(sourceInfo.sourceLine)
@@ -560,8 +488,8 @@ std::string ExecutionState::formatBranchMaps() {
     for (auto &c: findOriginalMapCall(branch.branch)) {
       llvm::errs() << "--------- Reference to ";
       c->dump();
-      auto it = referencesToMapReturn.find(c);
-      if (it != referencesToMapReturn.end()) {
+      auto it = callInformation.find(c);
+      if (it != callInformation.end()) {
         mapStr << " - Branch on "
                << branch.sourceFile
                << "(line:" << branch.sourceLine 
