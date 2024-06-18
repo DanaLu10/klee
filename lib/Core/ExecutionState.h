@@ -377,6 +377,7 @@ public:
   // void addWrite(std::string mapName, std::string keyValue, unsigned int keySize);
   std::set<std::pair<ref<Expr>, std::string>> getMapRead(std::string mapName);
   std::set<std::pair<ref<Expr>, std::string>> getMapWrite(std::string mapName);
+  ref<Expr> getMapReadForString(std::string mapName, std::string keyName);
   void addToOverlap(std::string mapName, std::string keyValue);
 
   std::set<std::string> getReadSet();

@@ -1762,8 +1762,8 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
       unsigned int offset = offsetToArg->getZExtValue();
       // osarg->print();
       ref<Expr> readValue = osarg->read(offsetToArg, keySize);
-      llvm::errs() << "Found map operation with key: ";
-      readValue->dump();
+      // llvm::errs() << "Found map operation with key: ";
+      // readValue->dump();
       state.mapOperationKey = readValue;
       std::string valueStr;
 
@@ -4634,12 +4634,13 @@ std::vector<std::string> Executor::formatPacketOffsetName(ExecutionState &state,
   } else {
     std::vector<std::string> valueStrs;
 
-    ref<ConstantExpr> symbOff = toConstant(state, byteOffset, "Byte offset symbolic");
-    uint64_t val = symbOff->getZExtValue();
+    // ref<ConstantExpr> symbOff = toConstant(state, byteOffset, "Byte offset symbolic");
+    // uint64_t val = symbOff->getZExtValue();
 
-    for (unsigned i = 0; i < bytes; i++) {
-      valueStrs.push_back("b" + std::to_string(val + i));
-    }
+    // for (unsigned i = 0; i < bytes; i++) {
+    //   valueStrs.push_back("b" + std::to_string(val + i));
+    // }
+    valueStrs.push_back("sym");
     return valueStrs;
   }
 }
@@ -4655,8 +4656,8 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
       const MemoryObject *lookupMO = lookupOP.first;
       if (state.isMapMemoryObject(lookupMO->id)) {
-        llvm::errs() << "Found a map access...\n";
-        i->dump();
+        // llvm::errs() << "Found a map access...\n";
+        // i->dump();
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
         if (i->getFunction()->getName().str() == "map_update_elem" || i->getFunction()->getName().str() ==  "array_update_elem") {
           // state.addWrite(mapInfo.mapName, state.nextMapKey, mapInfo.keySize);
@@ -4666,19 +4667,19 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
             std::set<std::pair<ref<Expr>, std::string>> accesses = state.getMapWrite(mapInfo.mapName);
             accesses.merge(state.getMapRead(mapInfo.mapName));
             for (auto &access : accesses) {
-              llvm::errs() << "update: trying to find reads or writes...\n";
+              // llvm::errs() << "update: trying to find reads or writes...\n";
               ref<Expr> equal = EqExpr::create(access.first, state.mapOperationKey);
               bool result;
               if (solver->mayBeTrue(state.constraints, equal, result, state.queryMetaData) && result) {
-                llvm::errs() << "solver said was true!\n";
-                llvm::errs() << "next key was " << state.nextMapKey << "\n";
+                // llvm::errs() << "solver said was true!\n";
+                // llvm::errs() << "next key was " << state.nextMapKey << "\n";
                 state.addToOverlap(mapInfo.mapName, state.nextMapKey);
                 break;
               }
             }
           }
         } else {
-          llvm::errs() << "map lookup\n";
+          // llvm::errs() << "map lookup\n";
           // state.addRead(mapInfo.mapName, state.nextMapKey, mapInfo.keySize);
           if (state.generateMode) {
             state.addMapRead(mapInfo.mapName, state.mapOperationKey, state.nextMapKey);
@@ -4703,7 +4704,7 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
   ObjectPair lookupOP;
   bool lookupResolveSuccess;
   std::string fName = i->getFunction()->getName().str();
-  if (fName != "array_allocate" && fName != "array_lookup_elem" && fName != "array_update_elem" && fName != "memcpy"
+  if (fName != "array_allocate" && fName != "array_lookup_elem" && fName != "array_update_elem" && fName != "memcpy" && fName != "array_reset"
       && i->getPointerOperandType()->isPointerTy()
       && i->getPointerOperandType()->getPointerElementType()->isPointerTy()) {
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
@@ -4713,20 +4714,16 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
         ref<Expr> offset = lookupMO->getOffsetExpr(value);
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
         if (mapInfo.mapType == MapType::Array) {
-          // llvm::errs() << "load offset ";
-          // offset->dump();
           std::string keyName = getMapKeyString(offset, mapInfo.valueSize);
+          ref<Expr> keyExpr = state.getMapReadForString(mapInfo.mapName, keyName);
           if (state.generateMode) {
-            state.addMapRead(mapInfo.mapName, state.mapOperationKey, keyName);
+            state.addMapRead(mapInfo.mapName, keyExpr, keyName);
           } else {
             std::set<std::pair<ref<Expr>, std::string>> writes = state.getMapWrite(mapInfo.mapName);
             for (auto &write : writes) {
-              llvm::errs() << "load: trying to find writes...\n";
-              ref<Expr> equal = EqExpr::create(write.first, state.mapOperationKey);
+              ref<Expr> equal = EqExpr::create(write.first, keyExpr);
               bool result;
               if (solver->mayBeTrue(state.constraints, equal, result, state.queryMetaData) && result) {
-                llvm::errs() << "solver said was true!\n";
-                llvm::errs() << "keyName " << keyName << "\n";
                 state.addToOverlap(mapInfo.mapName, keyName);
                 break;
               }
@@ -4751,18 +4748,16 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, Objec
       // llvm::errs() << "Found key to call... " << key << "\n";
       // state.addWrite(mapInfo.mapName, key, mapInfo.keySize);
       std::string key = getMapKeyString(offset, state.getMapInfo(mo->id).valueSize);
+      ref<Expr> keyExpr = state.getMapReadForString(mapInfo.mapName, key);
       if (state.generateMode) {
-        state.addMapWrite(mapInfo.mapName, state.mapOperationKey, key);
+        state.addMapWrite(mapInfo.mapName, keyExpr, key);
       } else {
         std::set<std::pair<ref<Expr>, std::string>> accesses = state.getMapWrite(mapInfo.mapName);
         accesses.merge(state.getMapRead(mapInfo.mapName));
         for (auto &access : accesses) {
-          llvm::errs() << "update: trying to find reads or writes...\n";
-          ref<Expr> equal = EqExpr::create(access.first, state.mapOperationKey);
+          ref<Expr> equal = EqExpr::create(access.first, keyExpr);
           bool result;
           if (solver->mayBeTrue(state.constraints, equal, result, state.queryMetaData) && result) {
-            llvm::errs() << "solver said was true!\n";
-            llvm::errs() << "next key was " << key << "\n";
             state.addToOverlap(mapInfo.mapName, key);
             break;
           }
@@ -4791,12 +4786,9 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, Objec
         std::set<std::pair<ref<Expr>, std::string>> accesses = state.getMapWrite(mapInfo.mapName);
         accesses.merge(state.getMapRead(mapInfo.mapName));
         for (auto &access : accesses) {
-          llvm::errs() << "update: trying to find reads or writes...\n";
           ref<Expr> equal = EqExpr::create(access.first, keyExpr);
           bool result;
           if (solver->mayBeTrue(state.constraints, equal, result, state.queryMetaData) && result) {
-            llvm::errs() << "solver said was true!\n";
-            llvm::errs() << "next key was " << key << "\n";
             state.addToOverlap(mapInfo.mapName, key);
             break;
           }

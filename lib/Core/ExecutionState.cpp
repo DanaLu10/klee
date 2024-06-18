@@ -172,6 +172,7 @@ void ExecutionState::addPacketRead(std::string newRead) {
 
 void ExecutionState::addMapRead(std::string mapName, ref<Expr> key, std::string keyName) {
   auto it = mapRead.find(mapName);
+  assert(key);
   if (it != mapRead.end()) {
     it->second.insert(std::make_pair(key, keyName));
   } else {
@@ -192,6 +193,17 @@ std::set<std::pair<ref<Expr>, std::string>> ExecutionState::getMapRead(std::stri
     result = it->second;
   }
   return result;
+}
+
+ref<Expr> ExecutionState::getMapReadForString(std::string mapName, std::string keyName) {
+  std::set<std::pair<ref<Expr>, std::string>> result = getMapRead(mapName);
+  for (auto &it : result) {
+    if (keyName == it.second) {
+      return it.first;
+    }
+  }
+  llvm::errs() << "Key was " << keyName << "\n";
+  assert(0 && "Failed to find key");
 }
 
 std::set<std::pair<ref<Expr>, std::string>> ExecutionState::getMapWrite(std::string mapName) {
