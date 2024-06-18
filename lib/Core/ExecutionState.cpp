@@ -121,8 +121,6 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     forkDisabled(state.forkDisabled),
     base_addrs(state.base_addrs),
     base_mos(state.base_mos),
-    // readSet(state.readSet),
-    // writeSet(state.writeSet),
     packetRead(state.packetRead),
     packetWrite(state.packetWrite),
     mapRead(state.mapRead),
@@ -202,7 +200,6 @@ ref<Expr> ExecutionState::getMapReadForString(std::string mapName, std::string k
       return it.first;
     }
   }
-  llvm::errs() << "Key was " << keyName << "\n";
   assert(0 && "Failed to find key");
 }
 
@@ -274,15 +271,6 @@ bool ExecutionState::isFunctionForAnalysis(llvm::Function *func) {
 
   // not present in the removed functions
   return std::find(removedFunctions.begin(), removedFunctions.end(), funcName) == removedFunctions.end();
-}
-
-bool ExecutionState::isAddressValue(llvm::Value *val) {
-  // DANATODO: This is very crude, and only a temp fix that still has bugs
-  // It could happen that there is a member of a struct named addr
-  std::string valName = val->getName().str();
-  std::string addressVars = ".addr";
-
-  return valName.find(addressVars) != std::string::npos;
 }
 
 void ExecutionState::setXDPMemoryObjectID(unsigned int id) {
@@ -439,7 +427,6 @@ std::pair<bool, std::string> ExecutionState::isMapLookupReturn(llvm::Value *val)
 }
 
 void ExecutionState::addBranchOnMapReturn(llvm::Value *val, const InstructionInfo *info, ref<Expr> cond) {
-  // std::string branchInfo = "line: " + std::to_string(info->line) + ", column: " + std::to_string(info->column);
   BranchInfo branchInfo;
   branchInfo.sourceLine = info->line;
   branchInfo.sourceColumn = info->column;
@@ -498,8 +485,6 @@ std::string ExecutionState::formatBranchMaps() {
 
   for (auto &branch : branchesOnMapReturnReference) {
     for (auto &c: findOriginalMapCall(branch.branch)) {
-      llvm::errs() << "--------- Reference to ";
-      c->dump();
       auto it = callInformation.find(c);
       if (it != callInformation.end()) {
         mapStr << " - Branch on "

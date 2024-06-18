@@ -371,10 +371,8 @@ public:
 
   void addPacketRead(std::string newRead);
   void addMapRead(std::string mapName, ref<Expr> key, std::string keyName);
-  // void addRead(std::string mapName, std::string keyValue, unsigned int keySize);
   void addPacketWrite(std::string newWrite);
   void addMapWrite(std::string mapName, ref<Expr> key, std::string keyName);
-  // void addWrite(std::string mapName, std::string keyValue, unsigned int keySize);
   std::set<std::pair<ref<Expr>, std::string>> getMapRead(std::string mapName);
   std::set<std::pair<ref<Expr>, std::string>> getMapWrite(std::string mapName);
   ref<Expr> getMapReadForString(std::string mapName, std::string keyName);
