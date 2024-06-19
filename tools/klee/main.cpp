@@ -330,7 +330,7 @@ private:
   Interpreter *m_interpreter;
   TreeStreamWriter *m_pathWriter, *m_symPathWriter;
   std::unique_ptr<llvm::raw_ostream> m_infoFile;
-  std::unique_ptr<llvm::raw_ostream> m_verificationFile;
+  std::unique_ptr<llvm::raw_ostream> m_readWriteFile;
   std::unique_ptr<llvm::raw_ostream> m_mapCorrelationFile;
   std::unique_ptr<llvm::raw_ostream> m_readWriteOverlapFile;
 
@@ -354,7 +354,7 @@ public:
   ~KleeHandler();
 
   llvm::raw_ostream &getInfoStream() const { return *m_infoFile; }
-  llvm::raw_ostream &getVerificationStream() const { return *m_verificationFile; }
+  llvm::raw_ostream &getReadWriteStream() const { return *m_readWriteFile; }
   llvm::raw_ostream &getMapCorrelationStream() const { return *m_mapCorrelationFile; }
   llvm::raw_ostream &getReadWriteOverlapStream() const { return *m_readWriteOverlapFile; }
   /// Returns the number of test cases successfully generated so far
@@ -473,10 +473,9 @@ KleeHandler::KleeHandler(int argc, char **argv)
   // open info
   m_infoFile = openOutputFile("info");
 
-  // open verification file
-
+  // open read-write file
   if (ReadSet || WriteSet) {
-    m_verificationFile = openOutputFile("verification");
+    m_readWriteFile = openOutputFile("readWriteInformation");
   }
 
   // open map correlation file
@@ -1652,31 +1651,31 @@ int main(int argc, char **argv, char **envp) {
     << "KLEE: done: query cex = " << queryCounterexamples << "\n";
   
   if (ReadSet) {
-    handler->getVerificationStream() << "KLEE: done: read set = {";
+    handler->getReadWriteStream() << "KLEE: done: read set = {";
     std::set<std::string> readSet = handler->getReadSet();
     bool first = true;
     for (auto const& read : readSet) {
       if (!first)
-        handler->getVerificationStream() << ", ";
+        handler->getReadWriteStream() << ", ";
       else
         first = false;
-      handler->getVerificationStream() << read;
+      handler->getReadWriteStream() << read;
     }
-    handler->getVerificationStream() << "} \n";
+    handler->getReadWriteStream() << "} \n";
   }
 
   if (WriteSet) {
-    handler->getVerificationStream() << "KLEE: done: write set = {";
+    handler->getReadWriteStream() << "KLEE: done: write set = {";
     std::set<std::string> writeSet = handler->getWriteSet();
     bool first = true;
     for (auto const& write : writeSet) {
       if (!first)
-        handler->getVerificationStream() << ", ";
+        handler->getReadWriteStream() << ", ";
       else 
         first = false;
-      handler->getVerificationStream() << write;
+      handler->getReadWriteStream() << write;
     }
-    handler->getVerificationStream() << "} \n";
+    handler->getReadWriteStream() << "} \n";
   }
 
   if (MapCorrelation) {

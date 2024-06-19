@@ -1785,8 +1785,30 @@ void Executor::executeCall(ExecutionState &state, KInstruction *ki, Function *f,
     } else if (fName == "bpf_redirect_map") {
       // For bpf_redirect_map the key is the value
       std::string valueStr;
-      for (unsigned int i = 0; i < keySize / 8; i++) {
-        valueStr += ("b" + std::to_string(i) + "(sym)_");
+      if (ConstantExpr *ce = dyn_cast<ConstantExpr>(lookupKey)) {
+        unsigned int val = ce->getZExtValue();
+        unsigned int width = ce->getWidth() / 8;
+        std::stringstream valueInHex;
+        valueInHex << std::setfill('0') 
+                  << std::setw(width * 2) 
+                  << std::hex 
+                  << val;
+        std::string valueHex = valueInHex.str();
+        std::string nextHex;
+        unsigned int x;
+        assert(valueHex.size() == (width * 2));
+        for (std::size_t i = 0; i < width; i++) {
+          std::stringstream nextBytes;
+          std::size_t index = valueHex.size() - 2 * (i + 1);
+          nextHex = valueHex.substr(index, 2);
+          nextBytes << std::hex << nextHex;
+          nextBytes >> x;
+          valueStr += ("b" + std::to_string(i) + "(" + std::to_string(x) + ")_");
+        }
+      } else {
+        for (unsigned int i = 0; i < keySize / 8; i++) {
+          valueStr += ("b" + std::to_string(i) + "(sym)_");
+        }
       }
       keyName = valueStr;
       state.mapOperationKey = lookupKey;
@@ -4644,14 +4666,15 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
   llvm::Value *secondOperand = i->getOperand(1);
   std::string fName = i->getFunction()->getName().str();
   if (((fName == "map_lookup_elem" || fName == "array_lookup_elem") && secondOperand->getName().str() == "retval")
-      || ((fName == "map_update_elem" || fName == "array_update_elem") && firstOperand->getType()->isPointerTy())) {
+      || ((fName == "map_update_elem" || fName == "array_update_elem") && firstOperand->getType()->isPointerTy())
+      || (fName == "bpf_redirect_map"  && secondOperand->getName().str() == "redirected_elem")) {
     ObjectPair lookupOP;
     bool lookupResolveSuccess;
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
       const MemoryObject *lookupMO = lookupOP.first;
       if (state.isMapMemoryObject(lookupMO->id)) {
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
-        if (i->getFunction()->getName().str() == "map_update_elem" || i->getFunction()->getName().str() ==  "array_update_elem") {
+        if (fName == "map_update_elem" || fName ==  "array_update_elem") {
           if (state.generateMode) {
             state.addMapWrite(mapInfo.mapName, state.mapOperationKey, state.nextMapKey);
           } else {
@@ -4690,7 +4713,8 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
   ObjectPair lookupOP;
   bool lookupResolveSuccess;
   std::string fName = i->getFunction()->getName().str();
-  if (fName != "array_allocate" && fName != "array_lookup_elem" && fName != "array_update_elem" && fName != "memcpy" && fName != "array_reset"
+  if (fName != "array_allocate" && fName != "array_lookup_elem" && fName != "array_update_elem" 
+      && fName != "memcpy" && fName != "array_reset"
       && i->getPointerOperandType()->isPointerTy()
       && i->getPointerOperandType()->getPointerElementType()->isPointerTy()) {
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
