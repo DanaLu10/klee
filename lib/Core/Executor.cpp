@@ -4632,18 +4632,6 @@ void Executor::resolveExact(ExecutionState &state,
   }
 }
 
-std::string Executor::getNameOfGEPSourceStruct(Value *i) {
-  // Return the name of the source struct for a getElementPtrInst, otherwise if
-  // it is not a struct or a getElementPtrInstr, return an empty string
-  if (GetElementPtrInst *getElemPtr = dyn_cast<GetElementPtrInst>(i)) {
-    if (getElemPtr->getSourceElementType()->isStructTy()) {
-      llvm::StructType *structType = cast<llvm::StructType>(getElemPtr->getSourceElementType());
-      return structType->getName().str();
-    }
-  }
-  return "";
-}
-
 std::vector<std::string> Executor::formatPacketOffsetName(ExecutionState &state, ref<Expr> byteOffset, unsigned bytes) {
   if (ConstantExpr *offsetCe = dyn_cast<ConstantExpr>(byteOffset)) {
     std::vector<std::string> valueStrs; 
@@ -4679,6 +4667,7 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
             state.addMapWrite(mapInfo.mapName, state.mapOperationKey, state.nextMapKey);
           } else {
             std::set<std::pair<ref<Expr>, std::string>> accesses = state.getMapWrite(mapInfo.mapName);
+            state.addCheckWrite(mapInfo.mapName, state.mapOperationKey, state.nextMapKey);
             accesses.merge(state.getMapRead(mapInfo.mapName));
             for (auto &access : accesses) {
               ref<Expr> equal = EqExpr::create(access.first, state.mapOperationKey);
@@ -4694,6 +4683,7 @@ void Executor::handleMapLookupAndUpdate(ExecutionState &state, llvm::Instruction
             state.addMapRead(mapInfo.mapName, state.mapOperationKey, state.nextMapKey);
           } else {
             std::set<std::pair<ref<Expr>, std::string>> writes = state.getMapWrite(mapInfo.mapName);
+            state.addCheckRead(mapInfo.mapName, state.mapOperationKey, state.nextMapKey);
             for (auto &write : writes) {
               ref<Expr> equal = EqExpr::create(write.first, state.mapOperationKey);
               bool result;
@@ -4714,7 +4704,7 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
   bool lookupResolveSuccess;
   std::string fName = i->getFunction()->getName().str();
   if (fName != "array_allocate" && fName != "array_lookup_elem" && fName != "array_update_elem" 
-      && fName != "memcpy" && fName != "array_reset"
+      && fName != "memcpy" && fName != "array_reset" && fName != "bpf_map_lookup_elem"
       && i->getPointerOperandType()->isPointerTy()
       && i->getPointerOperandType()->getPointerElementType()->isPointerTy()) {
     if (state.addressSpace.resolveOne(state, solver.get(), value, lookupOP, lookupResolveSuccess) && lookupResolveSuccess) {
@@ -4725,11 +4715,15 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
         if (mapInfo.mapType == MapType::Array) {
           std::string keyName = getMapKeyString(offset, mapInfo.valueSize);
+          llvm::errs() << "instruction ";
+          i->dump();
+          llvm::errs() << "map name " << mapInfo.mapName << "\n";
           ref<Expr> keyExpr = state.getMapReadForString(mapInfo.mapName, keyName);
           if (state.generateMode) {
             state.addMapRead(mapInfo.mapName, keyExpr, keyName);
           } else {
             std::set<std::pair<ref<Expr>, std::string>> writes = state.getMapWrite(mapInfo.mapName);
+            state.addCheckRead(mapInfo.mapName, keyExpr, keyName);
             for (auto &write : writes) {
               ref<Expr> equal = EqExpr::create(write.first, keyExpr);
               bool result;
@@ -4756,6 +4750,7 @@ void Executor::handleMapStore(ExecutionState &state, llvm::Instruction *i, Objec
       if (state.generateMode) {
         state.addMapWrite(mapInfo.mapName, keyExpr, key);
       } else {
+        state.addCheckWrite(mapInfo.mapName, keyExpr, key);
         std::set<std::pair<ref<Expr>, std::string>> accesses = state.getMapWrite(mapInfo.mapName);
         accesses.merge(state.getMapRead(mapInfo.mapName));
         for (auto &access : accesses) {

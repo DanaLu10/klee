@@ -313,6 +313,12 @@ public:
   /// @brief Map write set of path.
   std::unordered_map<std::string, std::set<std::pair<ref<Expr>, std::string>>> mapWrite;
 
+  /// @brief All map reads of path.
+  std::unordered_map<std::string, std::set<std::pair<ref<Expr>, std::string>>> allReads;
+
+  /// @brief All map writes set of path.
+  std::unordered_map<std::string, std::set<std::pair<ref<Expr>, std::string>>> allWrites;
+
   /// @brief Set of values which are part of the references to the arguments of a function
   std::unordered_set<llvm::Value*> argContents;
 
@@ -377,6 +383,8 @@ public:
   std::set<std::pair<ref<Expr>, std::string>> getMapWrite(std::string mapName);
   ref<Expr> getMapReadForString(std::string mapName, std::string keyName);
   void addToOverlap(std::string mapName, std::string keyValue);
+  void addCheckRead(std::string mapName, ref<Expr> key, std::string keyName);
+  void addCheckWrite(std::string mapName, ref<Expr> key, std::string keyName);
 
   std::set<std::string> getReadSet();
   std::set<std::string> getWriteSet();

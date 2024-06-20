@@ -210,11 +210,6 @@ private:
   /// Typeids used during exception handling
   std::vector<ref<Expr>> eh_typeids;
 
-  // Return the name of the source struct of a GetElementPtrInst if present
-  // Otherwise return an empty string if instruction is not a GEP instruction
-  // Or the source type is not a struct
-  std::string getNameOfGEPSourceStruct(llvm::Value *i);
-
   // Return the formatted byte offset string to be added to the read and write sets
   std::vector<std::string> formatPacketOffsetName(ExecutionState &state, ref<Expr> byteOffset, unsigned bytes);
 

@@ -125,6 +125,8 @@ ExecutionState::ExecutionState(const ExecutionState& state):
     packetWrite(state.packetWrite),
     mapRead(state.mapRead),
     mapWrite(state.mapWrite),
+    allReads(state.allReads),
+    allWrites(state.allWrites),
     argContents(state.argContents),
     mapLookupString(state.mapLookupString),
     mapLookupReturns(state.mapLookupReturns),
@@ -184,6 +186,29 @@ void ExecutionState::addToOverlap(std::string mapName, std::string keyValue) {
   overlap.insert("map:" + mapName + "." + keyValue);
 }
 
+void ExecutionState::addCheckRead(std::string mapName, ref<Expr> key, std::string keyName) {
+  auto it = allReads.find(mapName);
+  assert(key);
+  if (it != allReads.end()) {
+    it->second.insert(std::make_pair(key, keyName));
+  } else {
+    std::set<std::pair<ref<Expr>, std::string>> newSet;
+    newSet.insert(std::make_pair(key, keyName));
+    allReads.insert(std::make_pair(mapName, newSet));
+  }
+}
+
+void ExecutionState::addCheckWrite(std::string mapName, ref<Expr> key, std::string keyName) {
+  auto it = allWrites.find(mapName);
+  if (it != allWrites.end()) {
+    it->second.insert(std::make_pair(key, keyName));
+  } else {
+    std::set<std::pair<ref<Expr>, std::string>> newSet;
+    newSet.insert(std::make_pair(key, keyName));
+    allWrites.insert(std::make_pair(mapName, newSet));
+  }
+}
+
 std::set<std::pair<ref<Expr>, std::string>> ExecutionState::getMapRead(std::string mapName) {
   std::set<std::pair<ref<Expr>, std::string>> result;
   auto it = mapRead.find(mapName);
@@ -200,6 +225,16 @@ ref<Expr> ExecutionState::getMapReadForString(std::string mapName, std::string k
       return it.first;
     }
   }
+  auto checkIt = allReads.find(mapName);
+  if (checkIt != allReads.end()) {
+    result = checkIt->second;
+    for (auto &it : result) {
+      if (keyName == it.second) {
+        return it.first;
+      }
+    }
+  }
+  llvm::errs() << "key name was " << keyName << "\n";
   assert(0 && "Failed to find key");
 }
 
