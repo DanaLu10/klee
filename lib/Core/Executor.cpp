@@ -4715,9 +4715,6 @@ void Executor::handleArrayMapLoad(ExecutionState &state, llvm::LoadInst *i, ref<
         MapInfo mapInfo = state.getMapInfo(lookupMO->id);
         if (mapInfo.mapType == MapType::Array) {
           std::string keyName = getMapKeyString(offset, mapInfo.valueSize);
-          llvm::errs() << "instruction ";
-          i->dump();
-          llvm::errs() << "map name " << mapInfo.mapName << "\n";
           ref<Expr> keyExpr = state.getMapReadForString(mapInfo.mapName, keyName);
           if (state.generateMode) {
             state.addMapRead(mapInfo.mapName, keyExpr, keyName);
