@@ -1,6 +1,8 @@
 KLEE Symbolic Virtual Machine
 =============================
 
+This is a modified version of the [original klee](https://github.com/klee/klee) to support verification of interactions between XDP programs and other components of the system.
+
 [![Build Status](https://github.com/klee/klee/workflows/CI/badge.svg)](https://github.com/klee/klee/actions?query=workflow%3ACI)
 [![Build Status](https://api.cirrus-ci.com/github/klee/klee.svg)](https://cirrus-ci.com/github/klee/klee)
 [![Coverage](https://codecov.io/gh/klee/klee/branch/master/graph/badge.svg)](https://codecov.io/gh/klee/klee)
